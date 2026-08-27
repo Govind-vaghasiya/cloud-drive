@@ -8,7 +8,7 @@ interface LoginFormProps {
   onForgotPassword: () => void;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onForgotPassword }) => {
+export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForgotPassword }) => {
   const { refreshUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -167,6 +167,27 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onForgotPassword }) => {
             </button>
           </div>
         </form>
+
+        {onSwitchToRegister && (
+          <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '0.85rem', color: '#5F6368' }}>
+            Don't have an account?{' '}
+            <button
+              type="button"
+              onClick={onSwitchToRegister}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#0B57D0',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Create account
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
