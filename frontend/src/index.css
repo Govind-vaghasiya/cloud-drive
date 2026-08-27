@@ -1,0 +1,367 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Google Drive Light Material 3 Palette */
+  --bg-app: #F8FAFD;
+  --bg-surface: #FFFFFF;
+  --bg-surface-variant: #F0F4F9;
+  --bg-search: #EDF2FC;
+  --bg-search-focus: #FFFFFF;
+  --bg-active-pill: #C2E7FF;
+  --bg-hover-pill: #EAEEF4;
+  --bg-folder-card: #FFFFFF;
+  --bg-chip: #FFFFFF;
+  --bg-chip-hover: #F1F3F4;
+  
+  --border-subtle: #E0E3E7;
+  --border-focus: #0B57D0;
+  --border-folder: #E0E3E7;
+  
+  /* Typography */
+  --text-primary: #1F1F1F;
+  --text-secondary: #444746;
+  --text-muted: #72777A;
+  --text-active: #001D35;
+  --text-link: #0B57D0;
+  
+  /* Accents */
+  --accent-google-blue: #0B57D0;
+  --accent-btn-bg: #C2E7FF;
+  --accent-btn-text: #001D35;
+  --accent-btn-hover: #B3DDFB;
+  --folder-yellow: #FBBC04;
+  --folder-amber: #F9AB00;
+  
+  /* Status */
+  --status-success: #137333;
+  --status-warning: #B06000;
+  --status-danger: #C5221F;
+  
+  /* Elevation Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(60, 64, 67, 0.1), 0 1px 3px 1px rgba(60, 64, 67, 0.05);
+  --shadow-md: 0 1px 3px 0 rgba(60, 64, 67, 0.2), 0 4px 8px 3px rgba(60, 64, 67, 0.1);
+  --shadow-float: 0 4px 12px 0 rgba(60, 64, 67, 0.15), 0 1px 3px 0 rgba(60, 64, 67, 0.2);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.12);
+  
+  /* Corner Radii */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Material 3 App Shell */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--bg-app);
+  overflow: hidden;
+}
+
+.main-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px 16px 16px;
+  gap: 16px;
+}
+
+/* White Rounded Content Box */
+.content-surface {
+  flex: 1;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Legacy Glass Support Mapped to Material 3 Card */
+.glass-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.glass-panel:hover {
+  box-shadow: var(--shadow-md);
+  border-color: #D3E3FD;
+}
+
+/* + New Floating Action Pill Button */
+.btn-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 14px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-new:hover {
+  box-shadow: var(--shadow-float);
+  background-color: #F8FAFD;
+  border-color: #D3E3FD;
+}
+
+/* Navigation Pill Item */
+.nav-pill {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.nav-pill:hover {
+  background-color: var(--bg-hover-pill);
+  color: var(--text-primary);
+}
+
+.nav-pill.active {
+  background-color: var(--bg-active-pill);
+  color: var(--text-active);
+  font-weight: 600;
+}
+
+/* Filter Dropdown Chip */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-chip);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.filter-chip:hover {
+  background: var(--bg-chip-hover);
+  border-color: #C7C7C7;
+  color: var(--text-primary);
+}
+
+.filter-chip.active {
+  background: #E8F0FE;
+  border-color: #AECBFA;
+  color: #1A73E8;
+  font-weight: 600;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--accent-google-blue);
+  color: #FFFFFF;
+}
+
+.btn-primary:hover {
+  background: #0842A0;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-surface-variant);
+  color: var(--text-primary);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+/* Folder Card (Google Drive Horizontal Pill) */
+.folder-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #F0F4F9;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.folder-pill:hover {
+  background: #E3EDF7;
+  border-color: #D0E1F9;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.12);
+}
+
+/* File Card Google Drive Style */
+.file-card-gdrive {
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.file-card-gdrive:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: #C2E7FF;
+  transform: translateY(-1px);
+}
+
+/* File Preview Header Gradients */
+.file-preview-banner {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.file-banner-doc {
+  background: linear-gradient(135deg, #4285F4 0%, #2B5CE6 100%);
+}
+
+.file-banner-sheet {
+  background: linear-gradient(135deg, #0F9D58 0%, #0B8043 100%);
+}
+
+.file-banner-slide {
+  background: linear-gradient(135deg, #F4B400 0%, #E37400 100%);
+}
+
+.file-banner-pdf {
+  background: linear-gradient(135deg, #EA4335 0%, #C5221F 100%);
+}
+
+.file-banner-media {
+  background: linear-gradient(135deg, #7B1FA2 0%, #512DA8 100%);
+}
+
+.file-banner-code {
+  background: linear-gradient(135deg, #37474F 0%, #263238 100%);
+}
+
+.file-banner-generic {
+  background: linear-gradient(135deg, #5C6BC0 0%, #3F51B5 100%);
+}
+
+/* Custom Clean Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #DADCE0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #BDC1C6;
+}
+
+/* Animations */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease forwards;
+}

@@ -1,0 +1,44 @@
+# Logs & runtime
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies & Build artifacts
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables & Secrets
+.env
+.env.*
+!.env.example
+
+# Local storage, encrypted files, thumbnails & backups
+data/
+data/storage/
+data/backups/
+*.enc
+*.webp
+*.sql.gz
+backups/
+
+# Editor / OS files
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Persistent docker volumes / data
+postgres_data
+redis_data
+files_data
+storage_data
+caddy_data
+caddy_config
+onlyoffice_data
+onlyoffice_log

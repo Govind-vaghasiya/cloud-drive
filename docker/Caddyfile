@@ -1,0 +1,51 @@
+{
+    # Global options
+    auto_https off
+}
+
+# In production over Cloudflare Tunnel / Local reverse proxy
+http://drive.govindvaghasiya.ca, http://localhost, :80 {
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+
+    # API and Backend routes
+    handle /api/* {
+        reverse_proxy app:5000 {
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up Host {host}
+        }
+    }
+
+    # Health check placeholder endpoint
+    handle /health {
+        reverse_proxy app:5000
+    }
+
+    # Better Auth routes (if mounted at root /api/auth or similar)
+    handle /api/auth/* {
+        reverse_proxy app:5000 {
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up Host {host}
+        }
+    }
+
+    # OnlyOffice Document Server (supports WebSockets & HTTP API)
+    handle /onlyoffice/* {
+        uri strip_prefix /onlyoffice
+        reverse_proxy onlyoffice:80 {
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up Host {host}
+        }
+    }
+
+    # Frontend Single Page App (Vite React)
+    handle {
+        reverse_proxy frontend:80
+    }
+}

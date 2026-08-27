@@ -1,0 +1,172 @@
+services:
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloud_drive_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - file_storage:/app/data/storage
+    networks:
+      - cloud_drive_net
+    expose:
+      - "5000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cloud_drive_frontend
+    restart: unless-stopped
+    networks:
+      - cloud_drive_net
+    expose:
+      - "80"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloud_drive_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cloud_drive}
+      POSTGRES_USER: ${DB_USER:-cloud_drive_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_secret_password_123!}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cloud_drive_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cloud_drive_user} -d ${DB_NAME:-cloud_drive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloud_drive_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - cloud_drive_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: cloud_drive_onlyoffice
+    restart: unless-stopped
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET:-dev_onlyoffice_jwt_secret_key_32_bytes_123!}
+      - JWT_HEADER=Authorization
+      - JWT_IN_BODY=true
+      - USE_UNAUTHORIZED_STORAGE=true
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_log:/var/log/onlyoffice
+    networks:
+      - cloud_drive_net
+    expose:
+      - "80"
+
+  # Automated Scheduled Postgres Backup Service (Runs every night at 02:00 AM)
+  db_backup:
+    image: postgres:16-alpine
+    container_name: cloud_drive_db_backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cloud_drive}
+      POSTGRES_USER: ${DB_USER:-cloud_drive_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_secret_password_123!}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      RETENTION_DAYS: 30
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - postgres_backups:/backups
+    networks:
+      - cloud_drive_net
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "0 2 * * * /backup.sh" > /etc/crontabs/root
+        # Run initial backup on startup
+        /backup.sh
+        # Start crond in foreground
+        crond -f -l 2
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cloud_drive_caddy
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+      - "8443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - cloud_drive_net
+    depends_on:
+      - app
+      - frontend
+      - onlyoffice
+
+  # Optional Cloudflare Tunnel service (Uncomment and set CLOUDFLARE_TUNNEL_TOKEN in .env if using Docker-managed tunnel)
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: cloud_drive_cloudflared
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+  #   networks:
+  #     - cloud_drive_net
+  #   depends_on:
+  #     - caddy
+
+networks:
+  cloud_drive_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: cloud_drive_postgres_data
+  postgres_backups:
+    name: cloud_drive_postgres_backups
+  redis_data:
+    name: cloud_drive_redis_data
+  file_storage:
+    name: cloud_drive_file_storage
+  caddy_data:
+    name: cloud_drive_caddy_data
+  caddy_config:
+    name: cloud_drive_caddy_config
+  onlyoffice_data:
+    name: cloud_drive_onlyoffice_data
+  onlyoffice_log:
+    name: cloud_drive_onlyoffice_log
