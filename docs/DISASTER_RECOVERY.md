@@ -4,6 +4,10 @@ This document details the recovery procedure for Cloud Drive in the event of ser
 
 ---
 
+Default Credentials
+id: govind@admin.com
+pass: admin
+
 ## 1. Architecture Overview & Backup Components
 
 Cloud Drive consists of three stateful elements that must be preserved:
