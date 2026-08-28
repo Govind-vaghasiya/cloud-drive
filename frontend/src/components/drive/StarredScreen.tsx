@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Folder as FolderIcon, 
   Loader2 
@@ -11,29 +11,115 @@ import { FilePreviewModal } from './FilePreviewModal';
 import { ShareModal } from './ShareModal';
 import { VersionHistoryModal } from './VersionHistoryModal';
 import { FileTypeFilter, ModifiedFilter } from '../layout/Header';
+import { ContentFilters } from './ContentFilters';
+import { RenameModal, MoveModal, DeleteConfirmModal } from './Modals';
+import { ContextMenu } from './ContextMenu';
 
 interface StarredScreenProps {
   searchQuery?: string;
   typeFilter?: FileTypeFilter;
+  onTypeFilterChange?: (t: FileTypeFilter) => void;
   modifiedFilter?: ModifiedFilter;
+  onModifiedFilterChange?: (m: ModifiedFilter) => void;
   viewMode?: 'grid' | 'list';
+  onViewModeChange?: (v: 'grid' | 'list') => void;
+  onNavigateFolder?: (folderId: string | null) => void;
 }
 
 export const StarredScreen: React.FC<StarredScreenProps> = ({
   searchQuery = '',
   typeFilter = 'all',
+  onTypeFilterChange = () => {},
   modifiedFilter = 'anytime',
+  onModifiedFilterChange = () => {},
   viewMode = 'grid',
+  onViewModeChange = () => {},
+  onNavigateFolder,
 }) => {
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Selection states
+  const [selectedItems, setSelectedItems] = useState<{ id: string; name: string; type: 'file' | 'folder' }[]>([]);
+  const [isRightDragging, setIsRightDragging] = useState(false);
+  const rightDragStart = useRef(false);
+  const [multiContextMenuPos, setMultiContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [showBatchMoveModal, setShowBatchMoveModal] = useState<{ mode: 'move' | 'copy' } | null>(null);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
 
   // Modals state
   const [previewingFile, setPreviewingFile] = useState<FileItem | null>(null);
   const [editingOfficeFile, setEditingOfficeFile] = useState<FileItem | null>(null);
   const [versionHistoryFile, setVersionHistoryFile] = useState<FileItem | null>(null);
   const [sharingItem, setSharingItem] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
+  const [renamingItem, setRenamingItem] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
+  const [movingItem, setMovingItem] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
+  const [deletingItem, setDeletingItem] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
+
+  // Right-click drag selection handlers
+  const handleRightClickStart = (item: { id: string; type: 'file' | 'folder' }) => {
+    rightDragStart.current = true;
+    const itemDetails = item.type === 'folder' 
+      ? folders.find(f => f.id === item.id) 
+      : files.find(f => f.id === item.id);
+    const name = itemDetails?.name || (itemDetails as any)?.originalName || '';
+    
+    setSelectedItems((prev) => {
+      const exists = prev.some((p) => p.id === item.id && p.type === item.type);
+      if (exists) return prev;
+      return [...prev, { id: item.id, name, type: item.type }];
+    });
+  };
+
+  const handleHoverSelect = (item: { id: string; type: 'file' | 'folder' }) => {
+    if (rightDragStart.current) {
+      setIsRightDragging(true);
+      const itemDetails = item.type === 'folder' 
+        ? folders.find(f => f.id === item.id) 
+        : files.find(f => f.id === item.id);
+      const name = itemDetails?.name || (itemDetails as any)?.originalName || '';
+
+      setSelectedItems((prev) => {
+        const exists = prev.some((p) => p.id === item.id && p.type === item.type);
+        if (exists) return prev;
+        return [...prev, { id: item.id, name, type: item.type }];
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (e.button === 2) {
+        rightDragStart.current = false;
+        if (isRightDragging) {
+          e.preventDefault();
+          setIsRightDragging(false);
+          setMultiContextMenuPos({ x: e.clientX, y: e.clientY });
+        }
+      }
+    };
+
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      if (rightDragStart.current || isRightDragging || selectedItems.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('contextmenu', handleGlobalContextMenu);
+
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('contextmenu', handleGlobalContextMenu);
+    };
+  }, [isRightDragging, selectedItems]);
+
+  const handleContentClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      setSelectedItems([]);
+    }
+  };
 
   const fetchStarredItems = useCallback(async () => {
     setLoading(true);
@@ -103,6 +189,7 @@ export const StarredScreen: React.FC<StarredScreenProps> = ({
   return (
     <div
       className="content-surface"
+      onClick={handleContentClick}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -112,10 +199,19 @@ export const StarredScreen: React.FC<StarredScreenProps> = ({
       }}
     >
       {/* Top Header */}
-      <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '16px' }}>
         <h1 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#1F1F1F', margin: 0 }}>
           Starred
         </h1>
+
+        <ContentFilters
+          typeFilter={typeFilter}
+          onTypeFilterChange={onTypeFilterChange}
+          modifiedFilter={modifiedFilter}
+          onModifiedFilterChange={onModifiedFilterChange}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+        />
       </div>
 
       {loading ? (
@@ -176,12 +272,15 @@ export const StarredScreen: React.FC<StarredScreenProps> = ({
                   <FolderCard
                     key={folder.id}
                     folder={folder}
-                    onOpen={() => {}}
+                    onOpen={(id) => onNavigateFolder?.(id)}
                     onShare={(f) => setSharingItem({ id: f.id, name: f.name, type: 'folder' })}
-                    onRename={() => {}}
-                    onMove={() => {}}
-                    onDelete={() => {}}
+                    onRename={(f) => setRenamingItem({ id: f.id, name: f.name, type: 'folder' })}
+                    onMove={(f) => setMovingItem({ id: f.id, name: f.name, type: 'folder' })}
+                    onDelete={(f) => setDeletingItem({ id: f.id, name: f.name, type: 'folder' })}
                     onToggleStar={(f) => handleToggleStar(f, 'folder')}
+                    isSelected={selectedItems.some((s) => s.id === folder.id && s.type === 'folder')}
+                    onRightClickStart={handleRightClickStart}
+                    onHoverSelect={handleHoverSelect}
                   />
                 ))}
               </div>
@@ -213,9 +312,12 @@ export const StarredScreen: React.FC<StarredScreenProps> = ({
                       onVersionHistory={(f) => setVersionHistoryFile(f)}
                       onDownload={(f) => handleDownload(f)}
                       onShare={(f) => setSharingItem({ id: f.id, name: f.name, type: 'file' })}
-                      onRename={() => {}}
-                      onMove={() => {}}
-                      onDelete={() => {}}
+                      onRename={(f) => setRenamingItem({ id: f.id, name: f.name, type: 'file' })}
+                      onMove={(f) => setMovingItem({ id: f.id, name: f.name, type: 'file' })}
+                      onDelete={(f) => setDeletingItem({ id: f.id, name: f.name, type: 'file' })}
+                      isSelected={selectedItems.some((s) => s.id === file.id && s.type === 'file')}
+                      onRightClickStart={handleRightClickStart}
+                      onHoverSelect={handleHoverSelect}
                     />
                   ))}
                 </div>
@@ -250,9 +352,12 @@ export const StarredScreen: React.FC<StarredScreenProps> = ({
                       onVersionHistory={(f) => setVersionHistoryFile(f)}
                       onDownload={(f) => handleDownload(f)}
                       onShare={(f) => setSharingItem({ id: f.id, name: f.name, type: 'file' })}
-                      onRename={() => {}}
-                      onMove={() => {}}
-                      onDelete={() => {}}
+                      onRename={(f) => setRenamingItem({ id: f.id, name: f.name, type: 'file' })}
+                      onMove={(f) => setMovingItem({ id: f.id, name: f.name, type: 'file' })}
+                      onDelete={(f) => setDeletingItem({ id: f.id, name: f.name, type: 'file' })}
+                      isSelected={selectedItems.some((s) => s.id === file.id && s.type === 'file')}
+                      onRightClickStart={handleRightClickStart}
+                      onHoverSelect={handleHoverSelect}
                     />
                   ))}
                 </div>
@@ -299,6 +404,68 @@ export const StarredScreen: React.FC<StarredScreenProps> = ({
           resourceName={sharingItem.name}
           resourceType={sharingItem.type}
           onClose={() => setSharingItem(null)}
+        />
+      )}
+
+      {renamingItem && (
+        <RenameModal
+          item={renamingItem}
+          onClose={() => setRenamingItem(null)}
+          onSuccess={fetchStarredItems}
+        />
+      )}
+
+      {movingItem && (
+        <MoveModal
+          items={[movingItem]}
+          onClose={() => setMovingItem(null)}
+          onSuccess={fetchStarredItems}
+        />
+      )}
+
+      {deletingItem && (
+        <DeleteConfirmModal
+          items={[deletingItem]}
+          onClose={() => setDeletingItem(null)}
+          onSuccess={fetchStarredItems}
+        />
+      )}
+
+      {/* Multi-Select Modals */}
+      {showBatchMoveModal && (
+        <MoveModal
+          items={selectedItems}
+          mode={showBatchMoveModal.mode}
+          onClose={() => setShowBatchMoveModal(null)}
+          onSuccess={() => {
+            fetchStarredItems();
+            setSelectedItems([]);
+          }}
+        />
+      )}
+
+      {showBatchDeleteModal && (
+        <DeleteConfirmModal
+          items={selectedItems}
+          onClose={() => setShowBatchDeleteModal(false)}
+          onSuccess={() => {
+            fetchStarredItems();
+            setSelectedItems([]);
+          }}
+        />
+      )}
+
+      {/* Multi-Select Context Menu */}
+      {multiContextMenuPos && selectedItems.length > 0 && (
+        <ContextMenu
+          x={multiContextMenuPos.x}
+          y={multiContextMenuPos.y}
+          type="multi"
+          onClose={() => setMultiContextMenuPos(null)}
+          onMoveSelected={() => setShowBatchMoveModal({ mode: 'move' })}
+          onCopySelected={() => setShowBatchMoveModal({ mode: 'copy' })}
+          onDeleteSelected={() => setShowBatchDeleteModal(true)}
+          onClearSelection={() => setSelectedItems([])}
         />
       )}
     </div>

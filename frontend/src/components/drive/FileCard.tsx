@@ -40,6 +40,11 @@ interface FileCardProps {
   onRename: (file: FileItem) => void;
   onMove: (file: FileItem) => void;
   onDelete: (file: FileItem) => void;
+  isSelected?: boolean;
+  onSelect?: (e: React.MouseEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onDragStartItem?: (e: React.DragEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onRightClickStart?: (item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onHoverSelect?: (item: { id: string; name: string; type: 'file' | 'folder' }) => void;
 }
 
 export function isMediaFile(mimeType: string, name: string): { isMedia: boolean; isVideo: boolean; isImage: boolean } {
@@ -131,6 +136,11 @@ export const FileCard: React.FC<FileCardProps> = ({
   onRename,
   onMove,
   onDelete,
+  isSelected = false,
+  onRightClickStart,
+  onHoverSelect,
+  onSelect,
+  onDragStartItem,
 }) => {
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [thumbnailError, setThumbnailError] = useState(false);
@@ -142,13 +152,28 @@ export const FileCard: React.FC<FileCardProps> = ({
   const thumbnailUrl = `/api/thumbnail/${file.id}`;
   const bannerClass = getFileBannerClass(file.mimeType, file.name);
 
-  const handleCardClick = () => {
-    onPreview(file);
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (onSelect) {
+      onSelect(e, { id: file.id, name: file.name, type: 'file' });
+    } else {
+      onPreview(file);
+    }
+  };
+
+  const handleDoubleClick = () => {
+    if (isOffice && onOpenOffice) {
+      onOpenOffice(file);
+    } else {
+      onPreview(file);
+    }
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isSelected && onSelect) {
+      onSelect(e, { id: file.id, name: file.name, type: 'file' });
+    }
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -158,17 +183,38 @@ export const FileCard: React.FC<FileCardProps> = ({
     setContextMenuPos({ x: rect.right, y: rect.bottom });
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    if (onDragStartItem) {
+      onDragStartItem(e, { id: file.id, name: file.name, type: 'file' });
+    }
+  };
+
   return (
     <>
       <div
+        draggable
+        data-item-id={file.id}
+        data-item-type="file"
         onClick={handleCardClick}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
-        className="file-card-gdrive group"
+        onDragStart={handleDragStart}
+        onMouseDown={(e) => {
+          if (e.button === 2 && onRightClickStart) {
+            onRightClickStart({ id: file.id, name: file.name, type: 'file' });
+          }
+        }}
+        onMouseEnter={() => {
+          if (onHoverSelect) {
+            onHoverSelect({ id: file.id, name: file.name, type: 'file' });
+          }
+        }}
+        className={`file-card-gdrive group ${isSelected ? 'selected' : ''}`}
         style={{
           borderRadius: '12px',
           overflow: 'hidden',
-          background: '#FFFFFF',
-          border: '1px solid #E0E3E7',
+          background: isSelected ? '#E8F0FE' : '#FFFFFF',
+          border: isSelected ? '1px solid #1A73E8' : '1px solid #E0E3E7',
           cursor: 'pointer',
           display: 'flex',
           flexDirection: 'column',

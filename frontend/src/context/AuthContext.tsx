@@ -6,6 +6,7 @@ export interface UserProfile {
   name: string;
   email: string;
   role: 'admin' | 'user';
+  image?: string | null;
   storageQuotaBytes: number;
   storageUsedBytes: number;
   storageQuotaFormatted: string;

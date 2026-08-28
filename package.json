@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "npm --prefix frontend run dev",
+    "dev": "npm run dev:all",
     "dev:all": "npx -y concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend run dev",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
-    "start": "npm --prefix frontend run dev"
+    "start": "npm run dev:all"
   }
 }

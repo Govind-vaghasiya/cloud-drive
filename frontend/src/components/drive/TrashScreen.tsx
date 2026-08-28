@@ -54,12 +54,15 @@ export const TrashScreen: React.FC = () => {
       const res = await fetch('/api/trash/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resourceId: item.id, resourceType: item.type }),
+        body: JSON.stringify({ id: item.id, type: item.type }),
         credentials: 'include',
       });
       if (res.ok) {
         setFeedbackMsg({ type: 'success', text: `Restored "${item.name}"` });
         fetchTrash();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setFeedbackMsg({ type: 'error', text: errData.error || 'Failed to restore item' });
       }
     } catch {
       setFeedbackMsg({ type: 'error', text: 'Failed to restore item' });
@@ -72,21 +75,47 @@ export const TrashScreen: React.FC = () => {
     setActionLoadingId(item.id);
     setFeedbackMsg(null);
     try {
-      const res = await fetch('/api/trash/purge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resourceId: item.id, resourceType: item.type }),
+      const res = await fetch(`/api/trash/${item.id}?type=${item.type}`, {
+        method: 'DELETE',
         credentials: 'include',
       });
       if (res.ok) {
         setFeedbackMsg({ type: 'success', text: `Permanently deleted "${item.name}"` });
         setPermanentDeleteId(null);
         fetchTrash();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setFeedbackMsg({ type: 'error', text: errData.error || 'Failed to permanently delete' });
       }
     } catch {
       setFeedbackMsg({ type: 'error', text: 'Failed to permanently delete' });
     } finally {
       setActionLoadingId(null);
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    if (!confirm('Are you sure you want to permanently delete all items in trash? This cannot be undone.')) {
+      return;
+    }
+    setLoading(true);
+    setFeedbackMsg(null);
+    try {
+      const res = await fetch('/api/trash', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setFeedbackMsg({ type: 'success', text: 'Trash emptied successfully' });
+        fetchTrash();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setFeedbackMsg({ type: 'error', text: errData.error || 'Failed to empty trash' });
+      }
+    } catch {
+      setFeedbackMsg({ type: 'error', text: 'Failed to empty trash' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -110,6 +139,17 @@ export const TrashScreen: React.FC = () => {
             Items in trash will be automatically deleted forever after 30 days.
           </p>
         </div>
+
+        {items.length > 0 && (
+          <button
+            onClick={handleEmptyTrash}
+            className="btn btn-secondary"
+            style={{ color: '#C5221F', borderColor: '#FAD2CF', padding: '6px 14px', fontSize: '0.85rem' }}
+          >
+            <Trash2 size={16} />
+            <span>Empty trash</span>
+          </button>
+        )}
       </div>
 
       {feedbackMsg && (

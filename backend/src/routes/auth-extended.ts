@@ -1,10 +1,15 @@
 import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
+import path from 'path';
+import fs from 'fs';
 import { pool } from '../db.js';
 import { auth } from '../auth.js';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 
 const router = Router();
+
+const storageBaseDir = process.env.STORAGE_DIR || path.join(process.cwd(), 'data', 'storage');
+const avatarsDir = path.join(storageBaseDir, 'avatars');
 
 // =============================================================================
 // Current User Profile & Quota
@@ -13,7 +18,7 @@ router.get('/user/me', requireAuth, async (req: AuthenticatedRequest, res: Respo
   try {
     const userId = req.user!.id;
     const result = await pool.query(
-      'SELECT id, name, email, role, "storageQuotaBytes", "storageUsedBytes", "twoFactorEnabled", "createdAt" FROM "user" WHERE id = $1',
+      'SELECT id, name, email, role, image, "phoneNumber", "birthdate", "storageQuotaBytes", "storageUsedBytes", "twoFactorEnabled", "createdAt" FROM "user" WHERE id = $1',
       [userId]
     );
 
@@ -29,6 +34,9 @@ router.get('/user/me', requireAuth, async (req: AuthenticatedRequest, res: Respo
         name: user.name,
         email: user.email,
         role: user.role,
+        image: user.image,
+        phoneNumber: user.phoneNumber,
+        birthdate: user.birthdate,
         storageQuotaBytes: Number(user.storageQuotaBytes),
         storageUsedBytes: Number(user.storageUsedBytes),
         storageQuotaFormatted: formatBytes(Number(user.storageQuotaBytes)),
@@ -41,6 +49,26 @@ router.get('/user/me', requireAuth, async (req: AuthenticatedRequest, res: Respo
     console.error('[API /user/me] Error:', error);
     res.status(500).json({ error: 'Failed to retrieve user profile' });
   }
+});
+
+// Serve User Profile Avatar Images
+router.get('/avatar/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    if (!fs.existsSync(avatarsDir)) {
+      res.status(404).send('Avatar not found');
+      return;
+    }
+    const files = await fs.promises.readdir(avatarsDir);
+    const avatarFile = files.find((f) => f.startsWith(userId));
+    if (avatarFile) {
+      res.sendFile(path.resolve(path.join(avatarsDir, avatarFile)));
+      return;
+    }
+  } catch (err) {
+    console.error('Error serving avatar:', err);
+  }
+  res.status(404).send('Avatar not found');
 });
 
 // =============================================================================
@@ -181,6 +209,62 @@ router.delete('/admin/user/:userId', requireAdmin, async (req: AuthenticatedRequ
   } catch (error: any) {
     console.error('[API /admin/user/delete] Error deleting user:', error);
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Admin Action: Reset User Password
+router.post('/admin/user/:userId/reset-password', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 5) {
+      res.status(400).json({ error: 'Password must be at least 5 characters long' });
+      return;
+    }
+
+    // Call Better Auth's internal admin set password API
+    await auth.api.setUserPassword({
+      body: {
+        userId,
+        newPassword,
+      },
+    });
+
+    res.json({ message: 'User password reset successfully' });
+  } catch (error: any) {
+    console.error('[API /admin/user/reset-password] Error resetting password:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset user password' });
+  }
+});
+
+// Admin Action: List Simulated Password Resets
+router.get('/admin/password-resets', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const filePath = path.join(process.cwd(), 'data', 'storage', 'password_resets.json');
+    let resets = [];
+    if (fs.existsSync(filePath)) {
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      resets = JSON.parse(content || '[]');
+    }
+    res.json({ resets });
+  } catch (error: any) {
+    console.error('[API /admin/password-resets] Error reading resets:', error);
+    res.status(500).json({ error: 'Failed to retrieve password resets' });
+  }
+});
+
+// Admin Action: Clear Simulated Password Resets
+router.post('/admin/password-resets/clear', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const filePath = path.join(process.cwd(), 'data', 'storage', 'password_resets.json');
+    if (fs.existsSync(filePath)) {
+      await fs.promises.writeFile(filePath, '[]');
+    }
+    res.json({ message: 'Simulated password resets cleared successfully' });
+  } catch (error: any) {
+    console.error('[API /admin/password-resets/clear] Error clearing resets:', error);
+    res.status(500).json({ error: 'Failed to clear password resets' });
   }
 });
 

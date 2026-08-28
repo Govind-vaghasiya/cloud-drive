@@ -152,12 +152,13 @@ export const RenameModal: React.FC<RenameModalProps> = ({ item, onClose, onSucce
 // 3. Move Modal (File or Folder)
 // =============================================================================
 interface MoveModalProps {
-  item: { id: string; name: string; type: 'file' | 'folder' };
+  items: Array<{ id: string; name: string; type: 'file' | 'folder' }>;
+  mode?: 'move' | 'copy';
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export const MoveModal: React.FC<MoveModalProps> = ({ item, onClose, onSuccess }) => {
+export const MoveModal: React.FC<MoveModalProps> = ({ items, mode = 'move', onClose, onSuccess }) => {
   const [folders, setFolders] = useState<Array<{ id: string; name: string; parent_id: string | null }>>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string>('root');
   const [loading, setLoading] = useState(true);
@@ -170,8 +171,9 @@ export const MoveModal: React.FC<MoveModalProps> = ({ item, onClose, onSuccess }
         const res = await fetch('/api/folders', { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
-          // Filter out the folder itself to prevent cyclic move
-          const valid = (data.folders || []).filter((f: any) => f.id !== item.id);
+          // Filter out the folders themselves to prevent cyclic moves
+          const itemIds = items.map((i) => i.id);
+          const valid = (data.folders || []).filter((f: any) => !itemIds.includes(f.id));
           setFolders(valid);
         }
       } catch {
@@ -181,7 +183,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({ item, onClose, onSuccess }
       }
     };
     fetchAllFolders();
-  }, [item.id]);
+  }, [items]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,34 +191,36 @@ export const MoveModal: React.FC<MoveModalProps> = ({ item, onClose, onSuccess }
     setSubmitting(true);
 
     try {
-      const endpoint = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`;
-      const payload = item.type === 'folder' 
-        ? { parentId: selectedFolderId === 'root' ? null : selectedFolderId }
-        : { folderId: selectedFolderId === 'root' ? null : selectedFolderId };
-
+      const endpoint = mode === 'copy' ? '/api/resources/batch-copy' : '/api/resources/batch-move';
       const res = await fetch(endpoint, {
-        method: 'PATCH',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          resources: items,
+          targetFolderId: selectedFolderId === 'root' ? null : selectedFolderId,
+        }),
         credentials: 'include',
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed to move ${item.type}`);
+        throw new Error(errData.error || `Failed to ${mode} items`);
       }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Error moving item');
+      setError(err?.message || `Error executing ${mode}`);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const displayName = items.length === 1 ? `"${items[0].name}"` : `${items.length} items`;
+  const actionLabel = mode === 'copy' ? 'Copy' : 'Move';
+
   return (
-    <ModalContainer onClose={onClose} title={`Move "${item.name}"`} icon={<FolderInput size={22} color="#3b82f6" />}>
+    <ModalContainer onClose={onClose} title={`${actionLabel} ${displayName}`} icon={<FolderInput size={22} color="#3b82f6" />}>
       {error && <ErrorAlert message={error} />}
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Select destination folder:</p>
@@ -276,7 +280,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({ item, onClose, onSuccess }
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
           <button type="button" onClick={onClose} style={secondaryBtnStyle}>Cancel</button>
           <button type="submit" disabled={submitting} style={primaryBtnStyle}>
-            {submitting ? <Loader2 size={16} className="spin" /> : 'Move Here'}
+            {submitting ? <Loader2 size={16} className="spin" /> : `${actionLabel} Here`}
           </button>
         </div>
       </form>
@@ -288,12 +292,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({ item, onClose, onSuccess }
 // 4. Delete Confirmation Modal
 // =============================================================================
 interface DeleteConfirmModalProps {
-  item: { id: string; name: string; type: 'file' | 'folder' };
+  items: Array<{ id: string; name: string; type: 'file' | 'folder' }>;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({ item, onClose, onSuccess }) => {
+export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({ items, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -302,33 +306,36 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({ item, on
     setLoading(true);
 
     try {
-      const endpoint = item.type === 'folder' ? `/api/folders/${item.id}` : `/api/files/${item.id}`;
-      const res = await fetch(endpoint, {
-        method: 'DELETE',
+      const res = await fetch('/api/resources/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resources: items }),
         credentials: 'include',
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed to delete ${item.type}`);
+        throw new Error(errData.error || 'Failed to delete items');
       }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Error deleting item');
+      setError(err?.message || 'Error deleting items');
     } finally {
       setLoading(false);
     }
   };
 
+  const displayName = items.length === 1 ? `"${items[0].name}"` : `${items.length} items`;
+
   return (
-    <ModalContainer onClose={onClose} title={`Delete ${item.type === 'folder' ? 'Folder' : 'File'}`} icon={<Trash2 size={22} color="#ef4444" />}>
+    <ModalContainer onClose={onClose} title="Delete Items" icon={<Trash2 size={22} color="#ef4444" />}>
       {error && <ErrorAlert message={error} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
-          Are you sure you want to delete <strong>"{item.name}"</strong>?
-          {item.type === 'folder' && ' All files and subfolders inside will also be permanently deleted.'}
+          Are you sure you want to delete <strong>{displayName}</strong>?
+          {items.some((i) => i.type === 'folder') && ' All files and nested subfolders inside selected folders will also be moved to Trash.'}
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
           <button type="button" onClick={onClose} style={secondaryBtnStyle}>Cancel</button>
@@ -338,7 +345,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({ item, on
             disabled={loading}
             style={{ ...primaryBtnStyle, background: 'rgba(239, 68, 68, 0.85)' }}
           >
-            {loading ? <Loader2 size={16} className="spin" /> : 'Delete Permanently'}
+            {loading ? <Loader2 size={16} className="spin" /> : 'Delete'}
           </button>
         </div>
       </div>
@@ -372,7 +379,6 @@ const ModalContainer: React.FC<{
       style={{
         background: '#FFFFFF',
         borderRadius: '16px',
-        border: '1px solid #E0E3E7',
         boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)',
         width: '100%',
         maxWidth: '480px',

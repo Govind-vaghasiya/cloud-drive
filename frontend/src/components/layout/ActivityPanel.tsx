@@ -55,7 +55,6 @@ export const ActivityPanel: React.FC<ActivityPanelProps> = ({ onClose }) => {
         flexShrink: 0,
         background: '#FFFFFF',
         borderRadius: '16px',
-        border: '1px solid #E0E3E7',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

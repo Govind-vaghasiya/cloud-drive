@@ -15,6 +15,11 @@ interface FileRowProps {
   onRename: (file: FileItem) => void;
   onMove: (file: FileItem) => void;
   onDelete: (file: FileItem) => void;
+  isSelected?: boolean;
+  onSelect?: (e: React.MouseEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onDragStartItem?: (e: React.DragEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onRightClickStart?: (item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onHoverSelect?: (item: { id: string; name: string; type: 'file' | 'folder' }) => void;
 }
 
 export const FileRow: React.FC<FileRowProps> = ({
@@ -28,19 +33,39 @@ export const FileRow: React.FC<FileRowProps> = ({
   onRename,
   onMove,
   onDelete,
+  isSelected = false,
+  onSelect,
+  onDragStartItem,
+  onRightClickStart,
+  onHoverSelect,
 }) => {
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [isHovered, setIsHovered] = useState(false);
 
   const isOffice = isOfficeDocument(file.name, file.mimeType);
 
-  const handleRowClick = () => {
-    onPreview(file);
+  const handleRowClick = (e: React.MouseEvent) => {
+    if (onSelect) {
+      onSelect(e, { id: file.id, name: file.name, type: 'file' });
+    } else {
+      onPreview(file);
+    }
+  };
+
+  const handleDoubleClick = () => {
+    if (isOffice && onOpenOffice) {
+      onOpenOffice(file);
+    } else {
+      onPreview(file);
+    }
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isSelected && onSelect) {
+      onSelect(e, { id: file.id, name: file.name, type: 'file' });
+    }
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -50,22 +75,43 @@ export const FileRow: React.FC<FileRowProps> = ({
     setContextMenuPos({ x: rect.right, y: rect.bottom });
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    if (onDragStartItem) {
+      onDragStartItem(e, { id: file.id, name: file.name, type: 'file' });
+    }
+  };
+
   const fileColor = getFileColor(file.mimeType, file.name);
   const typeLabel = getFileTypeLabel(file.mimeType, file.name);
 
   return (
     <>
       <div
+        draggable
+        data-item-id={file.id}
+        data-item-type="file"
         onClick={handleRowClick}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
-        onMouseEnter={() => setIsHovered(true)}
+        onDragStart={handleDragStart}
+        onMouseDown={(e) => {
+          if (e.button === 2 && onRightClickStart) {
+            onRightClickStart({ id: file.id, name: file.name, type: 'file' });
+          }
+        }}
+        onMouseEnter={() => {
+          setIsHovered(true);
+          if (onHoverSelect) {
+            onHoverSelect({ id: file.id, name: file.name, type: 'file' });
+          }
+        }}
         onMouseLeave={() => setIsHovered(false)}
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(200px, 2.5fr) 140px 100px 130px 130px',
           alignItems: 'center',
           padding: '8px 16px',
-          background: isHovered ? '#F0F4F9' : '#FFFFFF',
+          background: isSelected ? '#E8F0FE' : (isHovered ? '#F0F4F9' : '#FFFFFF'),
           borderBottom: '1px solid #F1F3F4',
           cursor: 'pointer',
           transition: 'background 0.12s ease',

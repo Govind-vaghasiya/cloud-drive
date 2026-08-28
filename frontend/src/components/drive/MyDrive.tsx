@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  Loader2, 
+import {
+  Loader2,
   CloudUpload,
   Folder as FolderIcon
 } from 'lucide-react';
@@ -16,6 +16,8 @@ import { VersionHistoryModal } from './VersionHistoryModal';
 import { ContextMenu } from './ContextMenu';
 import { useUpload } from '../../context/UploadContext';
 import { FileTypeFilter, ModifiedFilter } from '../layout/Header';
+import { ContentFilters } from './ContentFilters';
+import { SelectionMarquee, SelectionToolbar } from './SelectionMarquee';
 
 interface BreadcrumbItem {
   id: string;
@@ -25,16 +27,22 @@ interface BreadcrumbItem {
 interface MyDriveProps {
   searchQuery?: string;
   typeFilter?: FileTypeFilter;
+  onTypeFilterChange?: (t: FileTypeFilter) => void;
   modifiedFilter?: ModifiedFilter;
+  onModifiedFilterChange?: (m: ModifiedFilter) => void;
   viewMode?: 'grid' | 'list';
+  onViewModeChange?: (v: 'grid' | 'list') => void;
   onNavigateFolder?: (folderId: string | null) => void;
 }
 
 export const MyDrive: React.FC<MyDriveProps> = ({
   searchQuery = '',
   typeFilter = 'all',
+  onTypeFilterChange = () => { },
   modifiedFilter = 'anytime',
+  onModifiedFilterChange = () => { },
   viewMode = 'grid',
+  onViewModeChange = () => { },
 }) => {
   const { uploadFiles } = useUpload();
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -43,9 +51,17 @@ export const MyDrive: React.FC<MyDriveProps> = ({
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([{ id: 'root', name: 'My Drive' }]);
   const [loading, setLoading] = useState(true);
 
-  // Drag-and-drop state
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const dragCounter = useRef(0);
+  // Selection states
+  const [selectedItems, setSelectedItems] = useState<{ id: string; name: string; type: 'file' | 'folder' }[]>([]);
+  const lastSelectedRef = useRef<{ id: string; type: 'file' | 'folder' } | null>(null);
+  const [multiContextMenuPos, setMultiContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [showBatchMoveModal, setShowBatchMoveModal] = useState<{ mode: 'move' | 'copy' } | null>(null);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
+
+  // Marquee (Rubber-Band) Drag Selection State
+  const [marquee, setMarquee] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+  const isMouseDownOnBg = useRef(false);
+  const marqueeStartPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Modals & Context Menu state
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -60,6 +76,10 @@ export const MyDrive: React.FC<MyDriveProps> = ({
   const [movingItem, setMovingItem] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ id: string; name: string; type: 'file' | 'folder' } | null>(null);
   const [previewingFile, setPreviewingFile] = useState<FileItem | null>(null);
+
+  // Drag-and-drop state for OS File Upload
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounter = useRef(0);
 
   const fetchContents = useCallback(async () => {
     setLoading(true);
@@ -93,14 +113,188 @@ export const MyDrive: React.FC<MyDriveProps> = ({
 
   useEffect(() => {
     fetchContents();
+    setSelectedItems([]);
   }, [fetchContents]);
 
-  // Drag & Drop Handlers
+  // Standard Item Click Selection
+  const handleSelectItem = (e: React.MouseEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => {
+    e.stopPropagation();
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedItems((prev) => {
+        const exists = prev.some((p) => p.id === item.id && p.type === item.type);
+        if (exists) return prev.filter((p) => !(p.id === item.id && p.type === item.type));
+        return [...prev, item];
+      });
+      lastSelectedRef.current = item;
+    } else if (e.shiftKey && lastSelectedRef.current) {
+      const allItems = [
+        ...folders.map((f) => ({ id: f.id, name: f.name, type: 'folder' as const })),
+        ...files.map((f) => ({ id: f.id, name: f.name, type: 'file' as const })),
+      ];
+      const lastIdx = allItems.findIndex((i) => i.id === lastSelectedRef.current?.id && i.type === lastSelectedRef.current?.type);
+      const currIdx = allItems.findIndex((i) => i.id === item.id && i.type === item.type);
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const start = Math.min(lastIdx, currIdx);
+        const end = Math.max(lastIdx, currIdx);
+        setSelectedItems(allItems.slice(start, end + 1));
+      }
+    } else {
+      setSelectedItems([item]);
+      lastSelectedRef.current = item;
+    }
+  };
+
+  // Drag start handler for items
+  const handleDragStartItem = (e: React.DragEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => {
+    const isCurrentSelected = selectedItems.some((s) => s.id === item.id && s.type === item.type);
+    const itemsToDrag = isCurrentSelected ? selectedItems : [item];
+    if (!isCurrentSelected) {
+      setSelectedItems([item]);
+    }
+    e.dataTransfer.setData('application/x-clouddrive-items', JSON.stringify(itemsToDrag));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  // Drop onto a folder card or breadcrumb
+  const handleDropOnFolder = async (targetFolderId: string | null, droppedItems: { id: string; name: string; type: 'file' | 'folder' }[]) => {
+    const validItems = droppedItems.filter((i) => !(i.type === 'folder' && i.id === targetFolderId));
+    if (validItems.length === 0) return;
+
+    try {
+      const res = await fetch('/api/resources/batch-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resources: validItems,
+          targetFolderId: targetFolderId || 'root',
+        }),
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        setSelectedItems([]);
+        fetchContents();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'Failed to move items');
+      }
+    } catch (err) {
+      console.error('Error moving items via drag and drop:', err);
+    }
+  };
+
+  // Marquee (Rubber-Band) Selection Engine
+  const handleWorkspaceMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-item-id], button, input, a, .modal, .content-filters, .floating-action-bar')) return;
+
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      setSelectedItems([]);
+    }
+    isMouseDownOnBg.current = true;
+    marqueeStartPos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleRightClickStart = (item: { id: string; name: string; type: 'file' | 'folder' }) => {
+    const isCurrentSelected = selectedItems.some((s) => s.id === item.id && s.type === item.type);
+    if (!isCurrentSelected) {
+      setSelectedItems([item]);
+    }
+  };
+
+  const handleHoverSelect = (item: { id: string; name: string; type: 'file' | 'folder' }) => {
+    if (isMouseDownOnBg.current) {
+      setSelectedItems((prev) => {
+        if (prev.some((p) => p.id === item.id && p.type === item.type)) return prev;
+        return [...prev, item];
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      if (!isMouseDownOnBg.current) return;
+      const startX = marqueeStartPos.current.x;
+      const startY = marqueeStartPos.current.y;
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+
+      if (Math.hypot(currentX - startX, currentY - startY) > 3) {
+        setMarquee({ startX, startY, currentX, currentY });
+
+        const minX = Math.min(startX, currentX);
+        const maxX = Math.max(startX, currentX);
+        const minY = Math.min(startY, currentY);
+        const maxY = Math.max(startY, currentY);
+
+        const elements = document.querySelectorAll('[data-item-id]');
+        const newlySelected: { id: string; name: string; type: 'file' | 'folder' }[] = [];
+
+        elements.forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          const overlaps = !(rect.right < minX || rect.left > maxX || rect.bottom < minY || rect.top > maxY);
+          if (overlaps) {
+            const id = el.getAttribute('data-item-id');
+            const type = el.getAttribute('data-item-type') as 'file' | 'folder';
+            if (id && type) {
+              const itemDetails = type === 'folder'
+                ? folders.find(f => f.id === id)
+                : files.find(f => f.id === id);
+              const name = itemDetails?.name || (itemDetails as any)?.originalName || '';
+              newlySelected.push({ id, name, type });
+            }
+          }
+        });
+        setSelectedItems(newlySelected);
+      }
+    };
+
+    const handleWindowMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) {
+        isMouseDownOnBg.current = false;
+        setMarquee(null);
+      }
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [folders, files]);
+
+  // Keyboard Shortcuts (Cmd+A, Escape, Delete)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const allItems = [
+          ...folders.map((f) => ({ id: f.id, name: f.name, type: 'folder' as const })),
+          ...files.map((f) => ({ id: f.id, name: f.name, type: 'file' as const })),
+        ];
+        setSelectedItems(allItems);
+      } else if (e.key === 'Escape') {
+        setSelectedItems([]);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedItems.length > 0) {
+          setShowBatchDeleteModal(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [folders, files, selectedItems]);
+
+  // Drag & Drop Handlers for OS File Uploads (Isolates from internal move drags)
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    dragCounter.current += 1;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    if (e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes('application/x-clouddrive-items')) {
+      dragCounter.current += 1;
       setIsDraggingOver(true);
     }
   };
@@ -108,9 +302,11 @@ export const MyDrive: React.FC<MyDriveProps> = ({
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    dragCounter.current -= 1;
-    if (dragCounter.current === 0) {
-      setIsDraggingOver(false);
+    if (e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes('application/x-clouddrive-items')) {
+      dragCounter.current -= 1;
+      if (dragCounter.current === 0) {
+        setIsDraggingOver(false);
+      }
     }
   };
 
@@ -124,6 +320,11 @@ export const MyDrive: React.FC<MyDriveProps> = ({
     e.stopPropagation();
     setIsDraggingOver(false);
     dragCounter.current = 0;
+
+    // Do nothing on background drop for internal item drags (prevents duplicate copy/upload)
+    if (e.dataTransfer.types.includes('application/x-clouddrive-items')) {
+      return;
+    }
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       uploadFiles(e.dataTransfer.files, currentFolderId);
@@ -163,7 +364,7 @@ export const MyDrive: React.FC<MyDriveProps> = ({
 
   const filteredFiles = files.filter((file) => {
     if (searchQuery && !file.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    
+
     // Type Filter
     if (typeFilter !== 'all') {
       const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -223,6 +424,7 @@ export const MyDrive: React.FC<MyDriveProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onContextMenu={handleWorkspaceContextMenu}
+      onMouseDown={handleWorkspaceMouseDown}
       className="content-surface"
       style={{
         display: 'flex',
@@ -233,6 +435,15 @@ export const MyDrive: React.FC<MyDriveProps> = ({
         position: 'relative',
       }}
     >
+      <SelectionMarquee box={marquee} />
+      <SelectionToolbar
+        selectedItems={selectedItems}
+        onClear={() => setSelectedItems([])}
+        onMove={() => setShowBatchMoveModal({ mode: 'move' })}
+        onCopy={() => setShowBatchMoveModal({ mode: 'copy' })}
+        onDelete={() => setShowBatchDeleteModal(true)}
+      />
+
       {/* Hidden Upload Inputs for Right-Click Workspace Menu */}
       <input
         type="file"
@@ -276,14 +487,46 @@ export const MyDrive: React.FC<MyDriveProps> = ({
       )}
 
       {/* Top Header / Title */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#1F1F1F', margin: 0 }}>
-          {currentFolderName}
-        </h1>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
 
-        {breadcrumbs.length > 1 && (
-          <Breadcrumbs items={breadcrumbs} onNavigate={(id) => setCurrentFolderId(id)} />
-        )}
+        borderBottom: '1px solid #E0E3E7',
+        marginBottom: '24px',
+        gap: '16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+          <h1 style={{
+            fontSize: '1rem',
+            fontWeight: 600,
+            color: '#1F1F1F',
+            margin: 0,
+            padding: '8px 12px',
+            background: '#D3E3FD',
+            borderBottom: '3px solid #0B57D0',
+            borderRadius: '8px 8px 0 0'
+          }}>
+            {currentFolderName}
+          </h1>
+
+          {breadcrumbs.length > 1 && (
+            <Breadcrumbs
+              items={breadcrumbs}
+              onNavigate={(id) => setCurrentFolderId(id)}
+              onDropOnFolder={handleDropOnFolder}
+            />
+          )}
+        </div>
+
+        <ContentFilters
+          typeFilter={typeFilter}
+          onTypeFilterChange={onTypeFilterChange}
+          modifiedFilter={modifiedFilter}
+          onModifiedFilterChange={onModifiedFilterChange}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+        />
       </div>
 
       {loading ? (
@@ -351,6 +594,12 @@ export const MyDrive: React.FC<MyDriveProps> = ({
                     onMove={(f) => setMovingItem({ id: f.id, name: f.name, type: 'folder' })}
                     onDelete={(f) => setDeletingItem({ id: f.id, name: f.name, type: 'folder' })}
                     onToggleStar={(f) => handleToggleStar(f, 'folder')}
+                    isSelected={selectedItems.some((s) => s.id === folder.id && s.type === 'folder')}
+                    onRightClickStart={handleRightClickStart}
+                    onHoverSelect={handleHoverSelect}
+                    onSelect={handleSelectItem}
+                    onDragStartItem={handleDragStartItem}
+                    onDropOnFolder={handleDropOnFolder}
                   />
                 ))}
               </div>
@@ -385,6 +634,11 @@ export const MyDrive: React.FC<MyDriveProps> = ({
                       onRename={(f) => setRenamingItem({ id: f.id, name: f.name, type: 'file' })}
                       onMove={(f) => setMovingItem({ id: f.id, name: f.name, type: 'file' })}
                       onDelete={(f) => setDeletingItem({ id: f.id, name: f.name, type: 'file' })}
+                      isSelected={selectedItems.some((s) => s.id === file.id && s.type === 'file')}
+                      onRightClickStart={handleRightClickStart}
+                      onHoverSelect={handleHoverSelect}
+                      onSelect={handleSelectItem}
+                      onDragStartItem={handleDragStartItem}
                     />
                   ))}
                 </div>
@@ -423,6 +677,11 @@ export const MyDrive: React.FC<MyDriveProps> = ({
                       onRename={(f) => setRenamingItem({ id: f.id, name: f.name, type: 'file' })}
                       onMove={(f) => setMovingItem({ id: f.id, name: f.name, type: 'file' })}
                       onDelete={(f) => setDeletingItem({ id: f.id, name: f.name, type: 'file' })}
+                      isSelected={selectedItems.some((s) => s.id === file.id && s.type === 'file')}
+                      onRightClickStart={handleRightClickStart}
+                      onHoverSelect={handleHoverSelect}
+                      onSelect={handleSelectItem}
+                      onDragStartItem={handleDragStartItem}
                     />
                   ))}
                 </div>
@@ -481,7 +740,7 @@ export const MyDrive: React.FC<MyDriveProps> = ({
 
       {movingItem && (
         <MoveModal
-          item={movingItem}
+          items={[movingItem]}
           onClose={() => setMovingItem(null)}
           onSuccess={fetchContents}
         />
@@ -489,7 +748,7 @@ export const MyDrive: React.FC<MyDriveProps> = ({
 
       {deletingItem && (
         <DeleteConfirmModal
-          item={deletingItem}
+          items={[deletingItem]}
           onClose={() => setDeletingItem(null)}
           onSuccess={fetchContents}
         />
@@ -504,6 +763,30 @@ export const MyDrive: React.FC<MyDriveProps> = ({
         />
       )}
 
+      {/* Multi-Select Modals */}
+      {showBatchMoveModal && (
+        <MoveModal
+          items={selectedItems}
+          mode={showBatchMoveModal.mode}
+          onClose={() => setShowBatchMoveModal(null)}
+          onSuccess={() => {
+            fetchContents();
+            setSelectedItems([]);
+          }}
+        />
+      )}
+
+      {showBatchDeleteModal && (
+        <DeleteConfirmModal
+          items={selectedItems}
+          onClose={() => setShowBatchDeleteModal(false)}
+          onSuccess={() => {
+            fetchContents();
+            setSelectedItems([]);
+          }}
+        />
+      )}
+
       {/* Right-Click Workspace Context Menu */}
       {workspaceContextMenuPos && (
         <ContextMenu
@@ -514,6 +797,20 @@ export const MyDrive: React.FC<MyDriveProps> = ({
           onNewFolder={() => setShowNewFolder(true)}
           onUploadFile={() => fileInputRef.current?.click()}
           onUploadFolder={() => folderInputRef.current?.click()}
+        />
+      )}
+
+      {/* Multi-Select Context Menu */}
+      {multiContextMenuPos && selectedItems.length > 0 && (
+        <ContextMenu
+          x={multiContextMenuPos.x}
+          y={multiContextMenuPos.y}
+          type="multi"
+          onClose={() => setMultiContextMenuPos(null)}
+          onMoveSelected={() => setShowBatchMoveModal({ mode: 'move' })}
+          onCopySelected={() => setShowBatchMoveModal({ mode: 'copy' })}
+          onDeleteSelected={() => setShowBatchDeleteModal(true)}
+          onClearSelection={() => setSelectedItems([])}
         />
       )}
     </div>

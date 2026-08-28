@@ -1,6 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { toNodeHandler } from 'better-auth/node';
 import { auth } from './auth.js';
 import { checkDatabaseConnection, pool } from './db.js';
@@ -17,6 +19,8 @@ import accountRouter from './routes/account.js';
 import officeRouter from './routes/office.js';
 import favoritesRouter from './routes/favorites.js';
 import versionsRouter from './routes/versions.js';
+// Batch resources operation endpoints
+import batchRouter from './routes/batch.js';
 import { initThumbnailWorker } from './queues/thumbnailQueue.js';
 import { initTrashPurgeScheduler } from './queues/trashPurgeQueue.js';
 import { authRateLimiter, publicShareRateLimiter } from './middleware/rateLimit.js';
@@ -95,6 +99,66 @@ app.all(['/api/auth/sign-up/email', '/api/auth/email/sign-up'], express.json(), 
   }
 });
 
+// Public check if the app is a fresh install (0 users)
+// IMPORTANT: Must be registered BEFORE the Better-Auth wildcard handler below,
+// otherwise /api/auth/* swallows this route.
+app.get('/api/auth/is-fresh-install', async (req: Request, res: Response) => {
+  try {
+    const countResult = await pool.query('SELECT COUNT(*) as count FROM "user"');
+    const userCount = parseInt(countResult.rows[0]?.count || '0', 10);
+    res.json({ fresh: userCount === 0 });
+  } catch (err) {
+    res.json({ fresh: false });
+  }
+});
+
+// Public: Validate invite passcode BEFORE Better-Auth wildcard (which would swallow this route)
+app.post('/api/auth/validate-invite-code', express.json(), async (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+    const countResult = await pool.query('SELECT COUNT(*) as count FROM "user"');
+    const userCount = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    // First user (initial admin) is exempt from invite codes
+    if (userCount === 0) {
+      res.json({ valid: true, isFirstUser: true, message: 'Initial Admin Setup Exempt' });
+      return;
+    }
+
+    if (!code || typeof code !== 'string' || code.trim() === '') {
+      res.status(400).json({ valid: false, error: 'Invite passcode is required' });
+      return;
+    }
+
+    const cleanCode = code.trim();
+    const result = await pool.query(
+      'SELECT id, used_at, expires_at FROM "invite_codes" WHERE "code" = $1',
+      [cleanCode]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(400).json({ valid: false, error: 'Invalid invite passcode' });
+      return;
+    }
+
+    const row = result.rows[0];
+    if (row.used_at) {
+      res.status(400).json({ valid: false, error: 'This invite passcode has already been used' });
+      return;
+    }
+
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      res.status(400).json({ valid: false, error: 'This invite passcode has expired' });
+      return;
+    }
+
+    res.json({ valid: true, expiresAt: row.expires_at });
+  } catch (error: any) {
+    console.error('[validate-invite-code]', error);
+    res.status(500).json({ valid: false, error: 'Failed to validate invite passcode. Please try again.' });
+  }
+});
+
 // Mount Better-Auth handler directly before express.json() for raw body processing if needed
 app.all('/api/auth/*', toNodeHandler(auth));
 
@@ -112,6 +176,29 @@ app.use('/api', accountRouter);
 app.use('/api', officeRouter);
 app.use('/api', favoritesRouter);
 app.use('/api', versionsRouter);
+app.use('/api', batchRouter);
+
+// Dev/Admin helper: return most recent simulated password reset URL from file
+// This exists because email sending is simulated (logged to file) rather than sent via SMTP
+app.get('/api/auth/debug/last-reset-url', async (req: Request, res: Response) => {
+  try {
+    const filePath = path.join(process.cwd(), 'data', 'storage', 'password_resets.json');
+    if (!fs.existsSync(filePath)) {
+      res.json({ url: null });
+      return;
+    }
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const resets = JSON.parse(content || '[]');
+    if (!resets.length) {
+      res.json({ url: null });
+      return;
+    }
+    const last = resets[resets.length - 1];
+    res.json({ url: last.url, email: last.email, timestamp: last.timestamp });
+  } catch (err) {
+    res.json({ url: null });
+  }
+});
 
 // Base placeholder endpoint
 app.get('/', (req: Request, res: Response) => {
@@ -162,6 +249,28 @@ app.get('/api/info', (req: Request, res: Response) => {
   });
 });
 
+async function seedDefaultAdmin() {
+  try {
+    const countRes = await pool.query('SELECT COUNT(*) as count FROM "user"');
+    const userCount = parseInt(countRes.rows[0]?.count || '0', 10);
+    if (userCount === 0) {
+      console.log('[Seed] Seeding default admin user (govind@admin.com)...');
+      await auth.api.signUpEmail({
+        body: {
+          name: 'Govind Vaghasiya',
+          email: 'govind@admin.com',
+          password: 'admin',
+        },
+      });
+      // Ensure the role is admin in database
+      await pool.query('UPDATE "user" SET role = \'admin\' WHERE email = $1', ['govind@admin.com']);
+      console.log('[Seed] Default admin user seeded successfully.');
+    }
+  } catch (err: any) {
+    console.error('[Seed] Failed to seed default admin:', err.message);
+  }
+}
+
 // Server Initialization
 async function startServer() {
   try {
@@ -169,6 +278,7 @@ async function startServer() {
     const dbStatus = await checkDatabaseConnection();
     if (dbStatus.connected) {
       await runMigrations();
+      await seedDefaultAdmin();
     } else {
       console.warn('[Database] Initial connection check failed. Will retry on request.');
     }

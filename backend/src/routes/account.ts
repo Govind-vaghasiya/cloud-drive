@@ -1,10 +1,22 @@
 import { Router, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { pool } from '../db.js';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { logAudit } from '../services/audit.js';
 import { auth } from '../auth.js';
 
 const router = Router();
+
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max for avatar
+});
+
+const storageBaseDir = process.env.STORAGE_DIR || path.join(process.cwd(), 'data', 'storage');
+const avatarsDir = path.join(storageBaseDir, 'avatars');
+fs.mkdirSync(avatarsDir, { recursive: true });
 
 function formatBytes(bytes: number, decimals = 2): string {
   if (!+bytes) return '0 Bytes';
@@ -203,6 +215,96 @@ router.post('/account/change-password', requireAuth, async (req: AuthenticatedRe
   } catch (error: any) {
     console.error('[Change Password] Error:', error);
     res.status(400).json({ error: error.message || 'Failed to change password' });
+  }
+});
+
+// =============================================================================
+// 4. Update Profile Info and Profile Picture
+// =============================================================================
+router.patch('/account/profile', requireAuth, (req: AuthenticatedRequest, res: Response, next) => {
+  uploadMemory.single('avatar')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'Profile picture exceeds the 5MB size limit' });
+        }
+        return res.status(400).json({ error: `Upload error: ${err.message}` });
+      }
+      return res.status(400).json({ error: err.message || 'Failed to parse upload file' });
+    }
+    next();
+  });
+}, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { name, phoneNumber, birthdate } = req.body;
+
+    let cleanPhone = phoneNumber;
+    if (phoneNumber !== undefined) {
+      if (phoneNumber && phoneNumber.trim() !== '') {
+        cleanPhone = phoneNumber.trim();
+        const phoneRegex = /^\+?[0-9\s\-()]{7,20}$/;
+        if (!phoneRegex.test(cleanPhone)) {
+          res.status(400).json({ error: 'Please enter a valid phone number (e.g. +1 555-0199)' });
+          return;
+        }
+      } else {
+        cleanPhone = null;
+      }
+    } else {
+      cleanPhone = (req.user as any).phoneNumber || null;
+    }
+
+    let cleanBirthdate = birthdate;
+    if (birthdate !== undefined) {
+      if (birthdate && birthdate.trim() !== '') {
+        cleanBirthdate = birthdate.trim();
+        const parsedDate = Date.parse(cleanBirthdate);
+        if (isNaN(parsedDate)) {
+          res.status(400).json({ error: 'Please enter a valid birthdate (YYYY-MM-DD)' });
+          return;
+        }
+      } else {
+        cleanBirthdate = null;
+      }
+    } else {
+      cleanBirthdate = (req.user as any).birthdate || null;
+    }
+
+    let imageUrl = req.user!.image || null;
+
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || '.png';
+      const avatarName = `${userId}${ext}`;
+      const avatarPath = path.join(avatarsDir, avatarName);
+      await fs.promises.writeFile(avatarPath, req.file.buffer);
+      imageUrl = `/api/avatar/${userId}?t=${Date.now()}`;
+    }
+
+    await pool.query(
+      `UPDATE "user"
+       SET name = COALESCE($1, name),
+           "phoneNumber" = $2,
+           birthdate = $3,
+           image = COALESCE($4, image),
+           "updatedAt" = CURRENT_TIMESTAMP
+       WHERE id = $5`,
+      [name || null, cleanPhone, cleanBirthdate, imageUrl, userId]
+    );
+
+    await logAudit({
+      action: 'USER_UPDATE_PROFILE',
+      userId,
+      resourceId: userId,
+      resourceType: 'user',
+      ipAddress: req.ip,
+      details: { name, phoneNumber, birthdate, hasAvatar: !!req.file },
+    });
+
+    res.json({ message: 'Profile updated successfully', imageUrl });
+  } catch (error: any) {
+    console.error('[Update Profile] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update profile info' });
   }
 });
 

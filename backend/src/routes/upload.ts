@@ -5,7 +5,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../db.js';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth.js';
-import { generateFileKey, wrapKey, unwrapKey, encryptBuffer } from '../utils/crypto.js';
+import { generateFileKey, wrapKey, unwrapKey, encryptBuffer, encryptFileInPlace } from '../utils/crypto.js';
 import { logAudit } from '../services/audit.js';
 import { addThumbnailJob } from '../queues/thumbnailQueue.js';
 
@@ -280,6 +280,13 @@ router.patch('/upload/:uploadId', requireAuth, rawBodyParser, async (req: Authen
       return;
     }
 
+    const offsetHeader = req.headers['upload-offset'];
+    if (!offsetHeader) {
+      res.status(400).json({ error: 'Missing Upload-Offset header' });
+      return;
+    }
+    const offset = parseInt(offsetHeader as string, 10);
+
     // Verify session
     const sessionResult = await pool.query(
       'SELECT * FROM "upload_sessions" WHERE "id" = $1 AND "owner_id" = $2',
@@ -294,14 +301,20 @@ router.patch('/upload/:uploadId', requireAuth, rawBodyParser, async (req: Authen
     const session = sessionResult.rows[0];
     const tempFilePath = path.join(tempDir, `${uploadId}.tmp`);
 
-    // Append chunk to temp file
-    await fs.promises.appendFile(tempFilePath, chunkBuffer);
+    // Write chunk to specific offset
+    const fileHandle = await fs.promises.open(tempFilePath, 'r+');
+    try {
+      await fileHandle.write(chunkBuffer, 0, chunkBuffer.length, offset);
+    } finally {
+      await fileHandle.close();
+    }
 
     const newUploadedSize = Number(session.uploaded_size) + chunkBuffer.length;
 
+    // Use atomic increment to prevent race conditions from concurrent chunk uploads
     await pool.query(
-      'UPDATE "upload_sessions" SET "uploaded_size" = $1 WHERE "id" = $2',
-      [newUploadedSize, uploadId]
+      'UPDATE "upload_sessions" SET "uploaded_size" = "uploaded_size" + $1 WHERE "id" = $2',
+      [chunkBuffer.length, uploadId]
     );
 
     res.json({
@@ -342,23 +355,33 @@ router.post('/upload/:uploadId/complete', requireAuth, async (req: Authenticated
       return;
     }
 
-    // 1. Read assembled unencrypted data
-    const rawBuffer = await fs.promises.readFile(tempFilePath);
-    const actualSize = rawBuffer.length;
+    // 1. Get total assembled unencrypted size
+    const tempStat = await fs.promises.stat(tempFilePath);
+    const actualSize = tempStat.size;
 
     // 2. Unwrap per-file key
     const fileKey = unwrapKey(session.encryption_key_wrapped);
 
-    // 3. Encrypt data with AES-256-GCM
-    const encryptedData = encryptBuffer(rawBuffer, fileKey);
-
-    // 4. Save to final storage destination
+    // 3. Encrypt data to final storage destination using stream
     const fileId = uuidv4();
     const storageName = `${fileId}.enc`;
     const destPath = path.join(filesDir, storageName);
-    await fs.promises.writeFile(destPath, encryptedData);
+    
+    // We export encryptFileInPlace from crypto.ts (assuming it's imported above)
+    await encryptFileInPlace(tempFilePath, destPath, fileKey);
 
-    const contentText = extractIndexableText(rawBuffer, session.original_name, session.mime_type);
+    // 4. Extract indexable text (only read first 100KB to avoid memory issues with huge files)
+    let contentText = null;
+    if (actualSize > 0) {
+      const fd = await fs.promises.open(tempFilePath, 'r');
+      try {
+        const prefixBuf = Buffer.alloc(Math.min(100000, actualSize));
+        await fd.read(prefixBuf, 0, prefixBuf.length, 0);
+        contentText = extractIndexableText(prefixBuf, session.original_name, session.mime_type);
+      } finally {
+        await fd.close();
+      }
+    }
 
     // 5. Clean up temporary unencrypted assembly file
     await fs.promises.unlink(tempFilePath).catch(() => {});

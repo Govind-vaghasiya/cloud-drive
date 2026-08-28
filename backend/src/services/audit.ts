@@ -18,13 +18,17 @@ export type AuditAction =
   | 'ADMIN_QUOTA_UPDATE'
   | 'SHARE_CREATE'
   | 'SHARE_REVOKE'
-  | 'PUBLIC_SHARE_DOWNLOAD';
+  | 'PUBLIC_SHARE_DOWNLOAD'
+  | 'USER_UPDATE_PROFILE'
+  | 'BATCH_MOVE'
+  | 'BATCH_DELETE'
+  | 'BATCH_COPY';
 
 export interface AuditLogOptions {
   action: AuditAction;
   userId?: string | null;
   resourceId?: string | null;
-  resourceType?: 'file' | 'folder' | 'user' | 'system';
+  resourceType?: 'file' | 'folder' | 'user' | 'system' | 'batch';
   ipAddress?: string | null;
   details?: Record<string, any> | null;
 }

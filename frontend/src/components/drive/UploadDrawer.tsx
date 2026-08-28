@@ -160,8 +160,24 @@ export const UploadDrawer: React.FC = () => {
                     >
                       {item.name}
                     </div>
-                    <div style={{ fontSize: '0.74rem', color: '#5F6368' }}>
-                      {item.sizeFormatted}
+                    <div style={{ fontSize: '0.74rem', color: '#5F6368', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>{item.sizeFormatted}</span>
+                      {item.status === 'uploading' && item.remainingTime !== undefined && (
+                        <>
+                          <span>•</span>
+                          <span>{item.progress}%</span>
+                          <span>•</span>
+                          <span>
+                            {!isFinite(item.remainingTime) || item.remainingTime < 0 
+                              ? 'calculating...' 
+                              : item.remainingTime < 60 
+                                ? `${Math.ceil(item.remainingTime)}s left` 
+                                : item.remainingTime < 3600
+                                  ? `${Math.floor(item.remainingTime / 60)}m ${Math.ceil(item.remainingTime % 60)}s left`
+                                  : `${Math.floor(item.remainingTime / 3600)}h ${Math.floor((item.remainingTime % 3600) / 60)}m left`}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

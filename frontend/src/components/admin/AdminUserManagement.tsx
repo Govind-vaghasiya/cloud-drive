@@ -49,9 +49,11 @@ export interface InviteCodeItem {
 }
 
 export const AdminUserManagement: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'invites'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'invites' | 'resets'>('users');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [inviteCodes, setInviteCodes] = useState<InviteCodeItem[]>([]);
+  const [passwordResets, setPasswordResets] = useState<any[]>([]);
+  const [adminResetPasswordVal, setAdminResetPasswordVal] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingCodes, setLoadingCodes] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,9 +116,39 @@ export const AdminUserManagement: React.FC = () => {
     }
   };
 
+  const fetchPasswordResets = async () => {
+    try {
+      const res = await fetch('/api/admin/password-resets', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setPasswordResets(data.resets || []);
+      }
+    } catch (err) {
+      console.error('Error fetching simulated password resets:', err);
+    }
+  };
+
+  const handleClearResets = async () => {
+    if (!window.confirm('Are you sure you want to clear all simulated password reset links?')) return;
+    try {
+      const res = await fetch('/api/admin/password-resets/clear', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setPasswordResets([]);
+        setSuccessMsg('Simulated password resets cleared.');
+        setTimeout(() => setSuccessMsg(null), 3000);
+      }
+    } catch (err) {
+      console.error('Error clearing resets:', err);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchInviteCodes();
+    fetchPasswordResets();
   }, []);
 
   const handleGenerateCode = async () => {
@@ -408,6 +440,30 @@ export const AdminUserManagement: React.FC = () => {
           >
             <Key size={16} />
             <span>One-Time Invite Passcodes (OTP) ({inviteCodes.filter(c => c.status === 'ACTIVE').length} Active)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveSubTab('resets');
+              fetchPasswordResets();
+            }}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '20px',
+              border: 'none',
+              fontSize: '0.86rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              background: activeSubTab === 'resets' ? '#0B57D0' : '#F1F3F4',
+              color: activeSubTab === 'resets' ? '#FFFFFF' : '#3C4043',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Clock size={16} />
+            <span>Simulated Password Resets ({passwordResets.length})</span>
           </button>
         </div>
 
@@ -965,6 +1021,99 @@ export const AdminUserManagement: React.FC = () => {
       </div>
     )}
 
+      {activeSubTab === 'resets' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '0.9rem', color: '#5F6368' }}>
+              These are temporary local simulated password resets. The links contain secure reset tokens that can be shared with users to let them set new passwords.
+            </div>
+            {passwordResets.length > 0 && (
+              <button
+                onClick={handleClearResets}
+                className="btn btn-secondary"
+                style={{ color: '#C5221F', background: '#FCE8E6', border: 'none', padding: '8px 16px', fontSize: '0.85rem' }}
+              >
+                Clear Reset Links
+              </button>
+            )}
+          </div>
+
+          <div
+            className="content-surface"
+            style={{
+              padding: '0px',
+              overflowX: 'auto',
+              background: '#FFFFFF',
+              borderRadius: '16px',
+            }}
+          >
+            {passwordResets.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#5F6368' }}>
+                No simulated password resets are currently pending.
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
+                <thead>
+                  <tr style={{ background: '#F8FAFD', borderBottom: '1px solid #E0E3E7', color: '#5F6368', fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '12px 16px' }}>User</th>
+                    <th style={{ padding: '12px 16px' }}>Email</th>
+                    <th style={{ padding: '12px 16px' }}>Requested Time</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {passwordResets.map((item, idx) => {
+                    const isCopying = copiedField === `reset-${idx}`;
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #F1F3F4' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: '#1F1F1F' }}>
+                          {item.name}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: '#5F6368' }}>
+                          {item.email}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: '0.8rem', color: '#5F6368' }}>
+                          {new Date(item.timestamp).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <button
+                            onClick={() => {
+                              try {
+                                const url = new URL(item.url);
+                                const localResetUrl = `${window.location.origin}${url.pathname}${url.search}`;
+                                copyToClipboard(localResetUrl, `reset-${idx}`);
+                              } catch (e) {
+                                copyToClipboard(item.url, `reset-${idx}`);
+                              }
+                            }}
+                            title="Copy Password Reset Link"
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: '6px 12px',
+                              color: '#0B57D0',
+                              fontSize: '0.82rem',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            {isCopying ? <Check size={14} color="#137333" /> : <Copy size={14} />}
+                            <span>{isCopying ? 'Copied Link' : 'Copy Reset Link'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* DETAILED USER INSPECTOR & CONTROL MODAL */}
       {/* ========================================================================= */}
@@ -1217,6 +1366,69 @@ export const AdminUserManagement: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              </form>
+            </div>
+            {/* CONTROL SECTION 2.5: Reset Password */}
+            <div style={{ padding: '16px 0', borderBottom: '1px solid #E0E3E7', marginBottom: '16px' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5F6368', display: 'block', marginBottom: '8px' }}>
+                Reset User Password
+              </label>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setError(null);
+                setSuccessMsg(null);
+                if (!adminResetPasswordVal || adminResetPasswordVal.length < 5) {
+                  setError('Password must be at least 5 characters long');
+                  return;
+                }
+                setActionLoading(true);
+                try {
+                  const res = await fetch(`/api/admin/user/${inspectingUser.id}/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newPassword: adminResetPasswordVal }),
+                  });
+                  if (res.ok) {
+                    setSuccessMsg(`Successfully reset password for ${inspectingUser.name}`);
+                    setAdminResetPasswordVal('');
+                    setTimeout(() => setSuccessMsg(null), 4000);
+                  } else {
+                    const data = await res.json().catch(() => ({}));
+                    setError(data.error || 'Failed to reset password');
+                  }
+                } catch (err: any) {
+                  setError(err.message || 'Network error');
+                } finally {
+                  setActionLoading(false);
+                }
+              }} style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  type="password"
+                  placeholder="Enter new password"
+                  value={adminResetPasswordVal}
+                  onChange={(e) => setAdminResetPasswordVal(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #DADCE0',
+                    fontSize: '0.82rem',
+                    color: '#1F1F1F',
+                    background: '#FFFFFF',
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Reset
+                </button>
               </form>
             </div>
 

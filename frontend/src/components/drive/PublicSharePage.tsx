@@ -170,72 +170,105 @@ export const PublicSharePage: React.FC<PublicSharePageProps> = ({ token }) => {
         {/* State A: Password Required */}
         {meta?.passwordRequired ? (
           <div
-            className="glass-card"
             style={{
-              maxWidth: '440px',
+              maxWidth: '420px',
               width: '100%',
-              padding: '2.5rem 2rem',
-              borderRadius: 'var(--radius-lg)',
-              background: 'rgba(23, 30, 48, 0.95)',
-              border: '1px solid var(--border-color)',
-              boxShadow: 'var(--shadow-lg)',
+              background: '#FFFFFF',
+              borderRadius: '20px',
+              padding: '36px 32px',
+              boxShadow: '0 24px 80px rgba(0, 0, 0, 0.4)',
               textAlign: 'center',
             }}
           >
+            {/* Lock icon */}
             <div
               style={{
-                width: '56px',
-                height: '56px',
+                width: '64px',
+                height: '64px',
                 borderRadius: '50%',
-                background: 'rgba(245, 158, 11, 0.15)',
+                background: '#FFF3E0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto 1.25rem',
-                color: '#fbbf24',
+                margin: '0 auto 20px',
+                color: '#E65100',
               }}
             >
-              <Lock size={28} />
+              <Lock size={30} />
             </div>
 
-            <h2 style={{ fontSize: '1.3rem', fontWeight: 700, margin: '0 0 6px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1F1F1F', margin: '0 0 8px' }}>
               Password Protected
             </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-              {meta.ownerName ? `${meta.ownerName} shared a protected item with you.` : 'This shared item requires a password to view.'}
+            <p style={{ color: '#5F6368', fontSize: '0.88rem', marginBottom: '24px', lineHeight: 1.5 }}>
+              {meta.ownerName
+                ? `${meta.ownerName} shared a protected item with you.`
+                : 'This shared item requires a password to view.'}
             </p>
 
             {errorMessage && (
-              <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#f87171', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                {errorMessage}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 14px',
+                  background: '#FCE8E6',
+                  border: '1px solid #FAD2CF',
+                  borderRadius: '8px',
+                  color: '#C5221F',
+                  fontSize: '0.85rem',
+                  marginBottom: '16px',
+                  textAlign: 'left',
+                }}
+              >
+                <span>⚠ {errorMessage}</span>
               </div>
             )}
 
-            <form onSubmit={handleUnlock} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <input
-                type="password"
-                placeholder="Enter password..."
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoFocus
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-color)',
-                  background: 'rgba(0,0,0,0.3)',
-                  color: '#fff',
-                  fontSize: '0.95rem',
-                  textAlign: 'center',
-                  letterSpacing: '1px',
-                }}
-              />
+            <form onSubmit={handleUnlock} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="password"
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #DADCE0',
+                    background: '#F8FAFD',
+                    color: '#1F1F1F',
+                    fontSize: '0.95rem',
+                    outline: 'none',
+                    textAlign: 'center',
+                    letterSpacing: '2px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
 
               <button
                 type="submit"
                 disabled={unlocking || !password.trim()}
-                className="btn btn-primary"
-                style={{ width: '100%', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.95rem' }}
+                style={{
+                  width: '100%',
+                  padding: '13px',
+                  background: unlocking || !password.trim() ? '#DADCE0' : '#1A73E8',
+                  color: unlocking || !password.trim() ? '#80868B' : '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '10px',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  cursor: unlocking || !password.trim() ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'background 0.15s ease',
+                }}
               >
                 {unlocking ? <Loader2 size={18} className="spin" /> : <Unlock size={18} />}
                 <span>Unlock & View</span>

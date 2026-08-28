@@ -224,7 +224,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           padding: '24px',
           borderRadius: '16px',
           background: '#FFFFFF',
-          border: '1px solid #E0E3E7',
           boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)',
           color: '#1F1F1F',
         }}

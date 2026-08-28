@@ -10,6 +10,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetUrl, setResetUrl] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,101 +22,199 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
+          email: email.trim(),
           redirectTo: `${window.location.origin}/reset-password`,
         }),
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.message || 'Failed to send password reset request');
+        const d = await res.json().catch(() => ({}));
+        setError(d.message || d.error || 'Failed to send reset request. Please try again.');
         setLoading(false);
         return;
       }
 
+      // Also fetch the reset URL from backend (simulated email system)
+      try {
+        const stored = await fetch('/api/auth/debug/last-reset-url', { credentials: 'include' });
+        if (stored.ok) {
+          const json = await stored.json();
+          if (json.url) setResetUrl(json.url);
+        }
+      } catch (_) { /* ignore – not critical */ }
+
       setSent(true);
     } catch (err: any) {
-      setError(err?.message || 'Error processing request');
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0,0,0,0.7)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      padding: '1rem',
-    }}>
-      <div className="glass-panel" style={{ maxWidth: '440px', width: '100%', padding: '2rem', position: 'relative' }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '1rem',
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '440px',
+          width: '100%',
+          background: '#FFFFFF',
+          borderRadius: '20px',
+          padding: '32px',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.25)',
+          border: '1px solid #E8EAED',
+          position: 'relative',
+        }}
+      >
+        {/* Close button */}
         <button
           onClick={onClose}
           style={{
             position: 'absolute',
-            top: '1.25rem',
-            right: '1.25rem',
-            background: 'none',
+            top: '16px',
+            right: '16px',
+            background: '#F1F3F4',
             border: 'none',
-            color: 'var(--text-muted)',
+            borderRadius: '50%',
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             cursor: 'pointer',
+            color: '#5F6368',
           }}
+          aria-label="Close"
         >
-          <X size={20} />
+          <X size={16} />
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1.5rem' }}>
-          <div style={{ background: 'rgba(59, 130, 246, 0.15)', padding: '10px', borderRadius: 'var(--radius-md)' }}>
-            <KeyRound size={24} color="#3b82f6" />
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              background: '#E8F0FE',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <KeyRound size={22} color="#1A73E8" />
           </div>
           <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Reset Password</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1F1F1F', margin: 0 }}>
+              Reset Password
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: '#5F6368', margin: '2px 0 0' }}>
               Recover access to your account
             </p>
           </div>
         </div>
 
+        {/* Error */}
         {error && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: 'rgba(239, 68, 68, 0.12)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#fca5a5',
-            padding: '0.75rem 1rem',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '0.875rem',
-            marginBottom: '1.25rem'
-          }}>
-            <AlertCircle size={18} />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#FCE8E6',
+              border: '1px solid #FAD2CF',
+              color: '#C5221F',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              marginBottom: '16px',
+            }}
+          >
+            <AlertCircle size={16} />
             <span>{error}</span>
           </div>
         )}
 
         {sent ? (
-          <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-            <CheckCircle2 size={42} color="var(--status-healthy)" style={{ margin: '0 auto 1rem' }} />
-            <h4 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Request Sent</h4>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-              If an account with email <strong>{email}</strong> exists, password reset instructions have been generated.
+          /* Success state */
+          <div style={{ textAlign: 'center', padding: '8px 0' }}>
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                background: '#E6F4EA',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}
+            >
+              <CheckCircle2 size={32} color="#137333" />
+            </div>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#1F1F1F', margin: '0 0 8px' }}>
+              Request Processed
+            </h4>
+            <p style={{ fontSize: '0.875rem', color: '#5F6368', marginBottom: '20px', lineHeight: 1.5 }}>
+              If an account with <strong style={{ color: '#1F1F1F' }}>{email}</strong> exists,
+              a password reset link has been generated.
             </p>
+
+            {/* Developer/Admin shortcut — shows reset URL since email is simulated */}
+            {resetUrl && (
+              <div
+                style={{
+                  background: '#FFF8E1',
+                  border: '1px solid #FFD54F',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  marginBottom: '20px',
+                  textAlign: 'left',
+                }}
+              >
+                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7B5E0E', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  ⚠ Dev Mode – Simulated Email Link
+                </p>
+                <a
+                  href={resetUrl}
+                  style={{
+                    fontSize: '0.8rem',
+                    color: '#1A73E8',
+                    wordBreak: 'break-all',
+                    textDecoration: 'none',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {resetUrl}
+                </a>
+              </div>
+            )}
+
             <button
               onClick={onClose}
               style={{
                 width: '100%',
-                background: 'var(--accent-gradient)',
+                background: '#1A73E8',
                 border: 'none',
                 color: '#fff',
-                padding: '10px',
-                borderRadius: 'var(--radius-sm)',
+                padding: '12px',
+                borderRadius: '10px',
                 fontWeight: 600,
+                fontSize: '0.9rem',
                 cursor: 'pointer',
               }}
             >
@@ -123,30 +222,47 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              Enter your email address and we'll send you instructions or reset your password.
+          /* Form state */
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <p style={{ color: '#5F6368', fontSize: '0.875rem', margin: 0, lineHeight: 1.5 }}>
+              Enter your account email and we'll generate a password reset link.
             </p>
+
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-secondary)' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  color: '#3C4043',
+                  marginBottom: '6px',
+                }}
+              >
                 Account Email
               </label>
               <div style={{ position: 'relative' }}>
-                <Mail size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <Mail
+                  size={16}
+                  color="#80868B"
+                  style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <input
                   type="email"
                   required
+                  autoFocus
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
                   style={{
                     width: '100%',
-                    padding: '10px 12px 10px 38px',
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: '#fff',
+                    padding: '11px 12px 11px 36px',
+                    border: '1px solid #DADCE0',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    color: '#1F1F1F',
+                    background: '#FFFFFF',
                     outline: 'none',
+                    boxSizing: 'border-box',
                   }}
                 />
               </div>
@@ -154,23 +270,25 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ onClos
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !email.trim()}
               style={{
-                background: 'var(--accent-gradient)',
+                background: loading || !email.trim() ? '#DADCE0' : '#1A73E8',
                 border: 'none',
-                color: '#fff',
+                color: loading || !email.trim() ? '#80868B' : '#fff',
                 padding: '12px',
-                borderRadius: 'var(--radius-sm)',
+                borderRadius: '10px',
                 fontWeight: 600,
-                cursor: 'pointer',
+                fontSize: '0.9rem',
+                cursor: loading || !email.trim() ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
+                transition: 'background 0.15s ease',
               }}
             >
               {loading ? <Loader2 size={18} className="spin" /> : null}
-              <span>Send Reset Instructions</span>
+              <span>{loading ? 'Sending…' : 'Send Reset Link'}</span>
             </button>
           </form>
         )}

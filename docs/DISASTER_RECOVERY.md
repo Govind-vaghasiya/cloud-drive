@@ -19,6 +19,7 @@ Cloud Drive consists of three stateful elements that must be preserved:
 
 ---
 
+
 ## 2. Restoring PostgreSQL Database from Backup
 
 ### Step 2.1: List Available Backups

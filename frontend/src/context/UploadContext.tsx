@@ -13,6 +13,8 @@ export interface UploadItem {
   folderId: string | null;
   uploadedBytes: number;
   uploadId?: string;
+  speed?: number;
+  remainingTime?: number;
 }
 
 interface UploadContextType {
@@ -39,6 +41,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const onUploadSuccessRef = useRef<(() => void) | null>(null);
+  const activeUploadsRef = useRef<Map<string, { abort: () => void }>>(new Map());
 
   const setOnUploadSuccessCallback = useCallback((cb: () => void) => {
     onUploadSuccessRef.current = cb;
@@ -53,6 +56,8 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const file = item.file;
     const folderId = item.folderId;
+    const abortController = new AbortController();
+    const startTime = Date.now();
 
     try {
       // 1. If file is small (< 5MB), use direct upload
@@ -64,13 +69,21 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
 
         const xhr = new XMLHttpRequest();
+        activeUploadsRef.current.set(item.id, { abort: () => xhr.abort() });
+
         xhr.open('POST', '/api/upload/direct', true);
         xhr.withCredentials = true;
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
+            const now = Date.now();
+            const elapsed = (now - startTime) / 1000;
+            const speed = elapsed > 0 ? e.loaded / elapsed : 0;
+            const remainingBytes = e.total - e.loaded;
+            const remainingTime = speed > 0 ? remainingBytes / speed : 0;
+            
             const percent = Math.round((e.loaded / e.total) * 100);
-            updateUploadItem(item.id, { progress: percent, uploadedBytes: e.loaded });
+            updateUploadItem(item.id, { progress: percent, uploadedBytes: e.loaded, speed, remainingTime });
           }
         };
 
@@ -89,10 +102,13 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           };
           xhr.onerror = () => reject(new Error('Network error during upload'));
+          xhr.onabort = () => reject(new Error('Upload cancelled'));
           xhr.send(formData);
         });
       } else {
         // 2. Resumable Chunked Upload for files > 5MB
+        activeUploadsRef.current.set(item.id, { abort: () => abortController.abort() });
+
         // Step A: Init session
         const initRes = await fetch('/api/upload/init', {
           method: 'POST',
@@ -104,6 +120,7 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             folderId: folderId && folderId !== 'root' ? folderId : null,
           }),
           credentials: 'include',
+          signal: abortController.signal,
         });
 
         if (!initRes.ok) {
@@ -114,20 +131,42 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const { uploadId } = await initRes.json();
         updateUploadItem(item.id, { uploadId });
 
-        // Step B: Send chunks sequentially
-        let offset = 0;
-        while (offset < file.size) {
-          const chunk = file.slice(offset, offset + CHUNK_SIZE);
+        let dynamicChunkSize = CHUNK_SIZE; // 5MB default
+        let maxConcurrent = 4; // Fast default concurrency
+
+        const navConn = (navigator as any).connection;
+        if (navConn) {
+          if (['slow-2g', '2g', '3g'].includes(navConn.effectiveType)) {
+            dynamicChunkSize = 1024 * 1024; // 1 MB
+            maxConcurrent = 1; // Sequential to prevent timeouts
+          }
+        }
+
+        // Step B: Prepare chunks
+        const chunks: { offset: number; size: number }[] = [];
+        for (let offset = 0; offset < file.size; offset += dynamicChunkSize) {
+          chunks.push({ offset, size: Math.min(dynamicChunkSize, file.size - offset) });
+        }
+
+        let uploadedBytesGlobal = 0;
+
+        const uploadChunk = async (chunkDef: { offset: number; size: number }) => {
+          if (abortController.signal.aborted) {
+            throw new Error('Upload cancelled');
+          }
+
+          const chunk = file.slice(chunkDef.offset, chunkDef.offset + chunkDef.size);
           const chunkBuffer = await chunk.arrayBuffer();
 
           const chunkRes = await fetch(`/api/upload/${uploadId}`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/octet-stream',
-              'Upload-Offset': offset.toString(),
+              'Upload-Offset': chunkDef.offset.toString(),
             },
             body: chunkBuffer,
             credentials: 'include',
+            signal: abortController.signal,
           });
 
           if (!chunkRes.ok) {
@@ -135,15 +174,52 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             throw new Error(chunkErr.error || 'Failed uploading chunk');
           }
 
-          offset += chunk.size;
-          const percent = Math.min(99, Math.round((offset / file.size) * 100));
-          updateUploadItem(item.id, { progress: percent, uploadedBytes: offset });
+          uploadedBytesGlobal += chunkDef.size;
+          
+          const now = Date.now();
+          const elapsed = (now - startTime) / 1000;
+          const speed = elapsed > 0 ? uploadedBytesGlobal / elapsed : 0;
+          const remainingBytes = file.size - uploadedBytesGlobal;
+          const remainingTime = speed > 0 ? remainingBytes / speed : 0;
+
+          const percent = Math.min(99, Math.round((uploadedBytesGlobal / file.size) * 100));
+          updateUploadItem(item.id, { progress: percent, uploadedBytes: uploadedBytesGlobal, speed, remainingTime });
+        };
+
+        // Concurrency pool runner
+        const executing = new Set<Promise<void>>();
+        let hasError = false;
+        let firstError: any = null;
+
+        for (const chunkDef of chunks) {
+          if (abortController.signal.aborted) throw new Error('Upload cancelled');
+          if (hasError) break; // Stop queuing new chunks if an error occurred
+          
+          const p = Promise.resolve().then(() => uploadChunk(chunkDef));
+          executing.add(p);
+          
+          const clean = () => executing.delete(p);
+          p.then(clean).catch((err) => { 
+            hasError = true; 
+            firstError = err; 
+            clean(); 
+          });
+          
+          if (executing.size >= maxConcurrent) {
+            await Promise.race(executing);
+          }
+        }
+        await Promise.all(executing);
+
+        if (hasError) {
+          throw firstError || new Error('Upload failed during chunking');
         }
 
         // Step C: Complete & finalize assembly + encryption
         const completeRes = await fetch(`/api/upload/${uploadId}/complete`, {
           method: 'POST',
           credentials: 'include',
+          signal: abortController.signal,
         });
 
         if (!completeRes.ok) {
@@ -160,11 +236,17 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         onUploadSuccessRef.current();
       }
     } catch (err: any) {
-      console.error('[Upload] Error:', err);
-      updateUploadItem(item.id, {
-        status: 'error',
-        error: err?.message || 'Upload failed',
-      });
+      if (err.name === 'AbortError' || err.message === 'Upload cancelled') {
+        updateUploadItem(item.id, { status: 'cancelled', error: 'Upload cancelled by user' });
+      } else {
+        console.error('[Upload] Error:', err);
+        updateUploadItem(item.id, {
+          status: 'error',
+          error: err?.message || 'Upload failed',
+        });
+      }
+    } finally {
+      activeUploadsRef.current.delete(item.id);
     }
   }, [updateUploadItem, refreshUser]);
 
@@ -199,6 +281,11 @@ export const UploadProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [uploads, processUpload]);
 
   const cancelUpload = useCallback((id: string) => {
+    const active = activeUploadsRef.current.get(id);
+    if (active) {
+      active.abort();
+      activeUploadsRef.current.delete(id);
+    }
     updateUploadItem(id, { status: 'cancelled', error: 'Upload cancelled by user' });
   }, [updateUploadItem]);
 

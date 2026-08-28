@@ -2,21 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Search,
   X,
-  ChevronDown,
-  Check,
-  Grid,
-  List,
   Info,
   LogOut,
   ShieldCheck,
   ShieldAlert,
-  Folder,
-  FileText,
-  FileSpreadsheet,
-  Presentation,
-  Film,
-  Image as ImageIcon,
-  File,
   Settings
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -27,12 +16,6 @@ export type ModifiedFilter = 'anytime' | 'today' | '7days' | '30days' | 'year';
 interface HeaderProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  selectedTypeFilter: FileTypeFilter;
-  onTypeFilterChange: (type: FileTypeFilter) => void;
-  selectedModifiedFilter: ModifiedFilter;
-  onModifiedFilterChange: (mod: ModifiedFilter) => void;
-  viewMode: 'grid' | 'list';
-  onViewModeChange: (mode: 'grid' | 'list') => void;
   showActivityPanel: boolean;
   onToggleActivityPanel: () => void;
   onOpenAdminModal?: () => void;
@@ -43,12 +26,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   onSearchChange,
-  selectedTypeFilter,
-  onTypeFilterChange,
-  selectedModifiedFilter,
-  onModifiedFilterChange,
-  viewMode,
-  onViewModeChange,
   showActivityPanel,
   onToggleActivityPanel,
   onOpenAdminModal,
@@ -56,23 +33,13 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigateToAdmin,
 }) => {
   const { user, logout } = useAuth();
-  const [showTypeMenu, setShowTypeMenu] = useState(false);
-  const [showModMenu, setShowModMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  const typeMenuRef = useRef<HTMLDivElement>(null);
-  const modMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close menus on outside click
+  // Close menu on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (typeMenuRef.current && !typeMenuRef.current.contains(e.target as Node)) {
-        setShowTypeMenu(false);
-      }
-      if (modMenuRef.current && !modMenuRef.current.contains(e.target as Node)) {
-        setShowModMenu(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setShowUserMenu(false);
       }
@@ -92,25 +59,6 @@ export const Header: React.FC<HeaderProps> = ({
     return 'Good evening';
   };
 
-  const typeLabels: Record<FileTypeFilter, string> = {
-    all: 'All file types',
-    folders: 'Folders',
-    documents: 'Documents',
-    spreadsheets: 'Spreadsheets',
-    presentations: 'Presentations',
-    videos: 'Videos',
-    images: 'Photos & images',
-    pdfs: 'PDFs',
-  };
-
-  const modLabels: Record<ModifiedFilter, string> = {
-    anytime: 'Anytime',
-    today: 'Today',
-    '7days': 'Last 7 days',
-    '30days': 'Last 30 days',
-    year: 'This year (2026)',
-  };
-
   return (
     <header
       style={{
@@ -126,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* 1. Left: Brand Logo only — fixed 240px to match sidebar width */}
       <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, width: '240px' }}>
         <img
-          src="/logo.png"
+          src="/logo-long.png"
           alt="Govind Drive"
           style={{ height: '40px', objectFit: 'contain' }}
         />
@@ -200,155 +148,8 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* 3. Right: Filter Chips & Tools */}
+      {/* 3. Right: Tools & Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {/* Type Filter Chip */}
-        <div style={{ position: 'relative' }} ref={typeMenuRef}>
-          <button
-            onClick={() => setShowTypeMenu(!showTypeMenu)}
-            className={`filter-chip ${selectedTypeFilter !== 'all' ? 'active' : ''}`}
-          >
-            <span>{selectedTypeFilter === 'all' ? 'Type' : typeLabels[selectedTypeFilter]}</span>
-            <ChevronDown size={14} />
-          </button>
-
-          {showTypeMenu && (
-            <div
-              className="fade-in"
-              style={{
-                position: 'absolute',
-                top: '36px',
-                left: 0,
-                zIndex: 1300,
-                width: '210px',
-                background: '#FFFFFF',
-                borderRadius: '12px',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.16)',
-                border: '1px solid #E0E3E7',
-                padding: '6px 0',
-              }}
-            >
-              {(Object.keys(typeLabels) as FileTypeFilter[]).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => { onTypeFilterChange(key); setShowTypeMenu(false); }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    padding: '8px 14px',
-                    background: 'none',
-                    border: 'none',
-                    textAlign: 'left',
-                    fontSize: '0.85rem',
-                    color: '#3C4043',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {key === 'folders' && <Folder size={16} color="#FBBC04" fill="#FBBC04" />}
-                    {key === 'documents' && <FileText size={16} color="#4285F4" />}
-                    {key === 'spreadsheets' && <FileSpreadsheet size={16} color="#0F9D58" />}
-                    {key === 'presentations' && <Presentation size={16} color="#F4B400" />}
-                    {key === 'videos' && <Film size={16} color="#EA4335" />}
-                    {key === 'images' && <ImageIcon size={16} color="#9C27B0" />}
-                    {key === 'pdfs' && <File size={16} color="#EA4335" />}
-                    <span>{typeLabels[key]}</span>
-                  </div>
-                  {selectedTypeFilter === key && <Check size={14} color="#1A73E8" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Modified Filter Chip */}
-        <div style={{ position: 'relative' }} ref={modMenuRef}>
-          <button
-            onClick={() => setShowModMenu(!showModMenu)}
-            className={`filter-chip ${selectedModifiedFilter !== 'anytime' ? 'active' : ''}`}
-          >
-            <span>{selectedModifiedFilter === 'anytime' ? 'Modified' : modLabels[selectedModifiedFilter]}</span>
-            <ChevronDown size={14} />
-          </button>
-
-          {showModMenu && (
-            <div
-              className="fade-in"
-              style={{
-                position: 'absolute',
-                top: '36px',
-                left: 0,
-                zIndex: 1300,
-                width: '180px',
-                background: '#FFFFFF',
-                borderRadius: '12px',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.16)',
-                border: '1px solid #E0E3E7',
-                padding: '6px 0',
-              }}
-            >
-              {(Object.keys(modLabels) as ModifiedFilter[]).map((key) => (
-                <button
-                  key={key}
-                  onClick={() => { onModifiedFilterChange(key); setShowModMenu(false); }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    padding: '8px 14px',
-                    background: 'none',
-                    border: 'none',
-                    textAlign: 'left',
-                    fontSize: '0.85rem',
-                    color: '#3C4043',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span>{modLabels[key]}</span>
-                  {selectedModifiedFilter === key && <Check size={14} color="#1A73E8" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* View mode toggle (Grid / List) */}
-        <div style={{ display: 'flex', background: '#FFFFFF', border: '1px solid #E0E3E7', borderRadius: '8px', padding: '2px', marginLeft: '4px' }}>
-          <button
-            onClick={() => onViewModeChange('grid')}
-            title="Grid view"
-            style={{
-              background: viewMode === 'grid' ? '#E8F0FE' : 'transparent',
-              color: viewMode === 'grid' ? '#1A73E8' : '#5F6368',
-              border: 'none',
-              padding: '6px 8px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-            }}
-          >
-            <Grid size={16} />
-          </button>
-          <button
-            onClick={() => onViewModeChange('list')}
-            title="List view"
-            style={{
-              background: viewMode === 'list' ? '#E8F0FE' : 'transparent',
-              color: viewMode === 'list' ? '#1A73E8' : '#5F6368',
-              border: 'none',
-              padding: '6px 8px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-            }}
-          >
-            <List size={16} />
-          </button>
-        </div>
-
         {/* Activity Side Panel Toggle [i] */}
         <button
           onClick={onToggleActivityPanel}
@@ -384,9 +185,12 @@ export const Header: React.FC<HeaderProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+              overflow: 'hidden',
             }}
           >
-            {initials}
+            {user?.image ? (
+              <img src={user.image} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : initials}
           </button>
 
           {showUserMenu && user && (
@@ -421,9 +225,12 @@ export const Header: React.FC<HeaderProps> = ({
                     justifyContent: 'center',
                     fontWeight: 700,
                     fontSize: '1rem',
+                    overflow: 'hidden',
                   }}
                 >
-                  {initials}
+                  {user.image ? (
+                    <img src={user.image} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : initials}
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1F1F1F' }}>
@@ -443,13 +250,13 @@ export const Header: React.FC<HeaderProps> = ({
                     onClick={() => { onNavigateToAdmin(); setShowUserMenu(false); }}
                     style={{
                       ...menuRowStyle,
-                      background: '#FEF7E0',
-                      color: '#B06000',
-                      fontWeight: 700,
+                      background: '#1b5285',
+                      color: '#ffffffff',
+                      fontWeight: 600,
                     }}
                   >
-                    <ShieldCheck size={16} color="#B06000" />
-                    <span>User Management & OTP Admin</span>
+                    <ShieldCheck size={16} color="#ffffffff" />
+                    <span>Admin Panel</span>
                   </button>
                 )}
 

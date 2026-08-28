@@ -19,6 +19,12 @@ interface FolderCardProps {
   onMove: (folder: FolderItem) => void;
   onDelete: (folder: FolderItem) => void;
   onToggleStar?: (folder: FolderItem) => void;
+  isSelected?: boolean;
+  onSelect?: (e: React.MouseEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onDragStartItem?: (e: React.DragEvent, item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onDropOnFolder?: (targetFolderId: string, items: { id: string; name: string; type: 'file' | 'folder' }[]) => void;
+  onRightClickStart?: (item: { id: string; name: string; type: 'file' | 'folder' }) => void;
+  onHoverSelect?: (item: { id: string; name: string; type: 'file' | 'folder' }) => void;
 }
 
 export const FolderCard: React.FC<FolderCardProps> = ({
@@ -29,12 +35,22 @@ export const FolderCard: React.FC<FolderCardProps> = ({
   onMove,
   onDelete,
   onToggleStar,
+  isSelected = false,
+  onSelect,
+  onDragStartItem,
+  onDropOnFolder,
+  onRightClickStart,
+  onHoverSelect,
 }) => {
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDragOverTarget, setIsDragOverTarget] = useState(false);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isSelected && onSelect) {
+      onSelect(e, { id: folder.id, name: folder.name, type: 'folder' });
+    }
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -44,23 +60,90 @@ export const FolderCard: React.FC<FolderCardProps> = ({
     setContextMenuPos({ x: rect.right, y: rect.bottom });
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    if (onDragStartItem) {
+      onDragStartItem(e, { id: folder.id, name: folder.name, type: 'folder' });
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/x-clouddrive-items')) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      if (!isDragOverTarget) {
+        setIsDragOverTarget(true);
+      }
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOverTarget(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    setIsDragOverTarget(false);
+    if (e.dataTransfer.types.includes('application/x-clouddrive-items')) {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const rawData = e.dataTransfer.getData('application/x-clouddrive-items');
+        if (rawData) {
+          const items = JSON.parse(rawData);
+          if (Array.isArray(items) && onDropOnFolder) {
+            onDropOnFolder(folder.id, items);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse dropped items:', err);
+      }
+    }
+  };
+
   return (
     <>
       <div
-        onClick={() => onOpen(folder.id)}
+        draggable
+        data-item-id={folder.id}
+        data-item-type="folder"
+        onClick={(e) => {
+          if (onSelect) {
+            onSelect(e, { id: folder.id, name: folder.name, type: 'folder' });
+          } else {
+            onOpen(folder.id);
+          }
+        }}
+        onDoubleClick={() => onOpen(folder.id)}
         onContextMenu={handleContextMenu}
-        className="folder-pill group"
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onMouseDown={(e) => {
+          if (e.button === 2 && onRightClickStart) {
+            onRightClickStart({ id: folder.id, name: folder.name, type: 'folder' });
+          }
+        }}
+        onMouseEnter={() => {
+          if (onHoverSelect) {
+            onHoverSelect({ id: folder.id, name: folder.name, type: 'folder' });
+          }
+        }}
+        className={`folder-pill group ${isSelected ? 'selected' : ''} ${isDragOverTarget ? 'drop-target-active' : ''}`}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '10px 14px',
-          background: '#F0F4F9',
-          border: '1px solid transparent',
+          background: isDragOverTarget ? '#E8F0FE' : isSelected ? '#E8F0FE' : '#F0F4F9',
+          border: isDragOverTarget ? '2px dashed #1A73E8' : isSelected ? '1px solid #1A73E8' : '1px solid transparent',
           borderRadius: '12px',
           cursor: 'pointer',
           transition: 'all 0.15s ease',
           userSelect: 'none',
+          boxShadow: isDragOverTarget ? '0 0 0 2px rgba(26,115,232,0.2)' : 'none',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>

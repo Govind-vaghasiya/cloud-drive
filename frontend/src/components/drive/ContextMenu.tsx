@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Eye, Download, Share2, Edit2, FolderInput, Trash2, Edit3, Star, History, FolderPlus, Upload, FolderUp } from 'lucide-react';
+import { Eye, Download, Share2, Edit2, FolderInput, Trash2, Edit3, Star, History, FolderPlus, Upload, FolderUp, Copy } from 'lucide-react';
 
 interface ContextMenuProps {
   x: number;
   y: number;
-  type: 'file' | 'folder' | 'workspace';
+  type: 'file' | 'folder' | 'workspace' | 'multi';
   onClose: () => void;
   onPreview?: () => void;
   onOpenOffice?: () => void;
@@ -20,6 +20,10 @@ interface ContextMenuProps {
   onNewFolder?: () => void;
   onUploadFile?: () => void;
   onUploadFolder?: () => void;
+  onMoveSelected?: () => void;
+  onCopySelected?: () => void;
+  onDeleteSelected?: () => void;
+  onClearSelection?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -41,6 +45,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onNewFolder,
   onUploadFile,
   onUploadFolder,
+  onMoveSelected,
+  onCopySelected,
+  onDeleteSelected,
+  onClearSelection,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +112,39 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         </>
       )}
 
+      {type === 'multi' && (
+        <>
+          {onMoveSelected && (
+            <button onClick={() => { onMoveSelected(); onClose(); }} style={menuItemStyle}>
+              <FolderInput size={16} color="#5F6368" />
+              <span>Move selected</span>
+            </button>
+          )}
+
+          {onCopySelected && (
+            <button onClick={() => { onCopySelected(); onClose(); }} style={menuItemStyle}>
+              <Copy size={16} color="#5F6368" />
+              <span>Copy selected</span>
+            </button>
+          )}
+
+          {onDeleteSelected && (
+            <button onClick={() => { onDeleteSelected(); onClose(); }} style={{ ...menuItemStyle, color: '#C5221F' }}>
+              <Trash2 size={16} color="#C5221F" />
+              <span>Delete selected</span>
+            </button>
+          )}
+
+          <div style={{ height: '1px', background: '#E0E3E7', margin: '4px 0' }} />
+
+          {onClearSelection && (
+            <button onClick={() => { onClearSelection(); onClose(); }} style={menuItemStyle}>
+              <span>Clear selection</span>
+            </button>
+          )}
+        </>
+      )}
+
       {type === 'file' && isOffice && onOpenOffice && (
         <button onClick={() => { onOpenOffice(); onClose(); }} style={menuItemStyle}>
           <Edit3 size={16} color="#0B57D0" />
@@ -118,7 +159,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         </button>
       )}
 
-      {onStar && (
+      {onStar && type !== 'multi' && (
         <button onClick={() => { onStar(); onClose(); }} style={menuItemStyle}>
           <Star size={16} fill={isStarred ? '#F9AB00' : 'none'} color="#F9AB00" />
           <span>{isStarred ? 'Remove from Starred' : 'Add to Starred'}</span>
@@ -139,28 +180,28 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         </button>
       )}
 
-      {onShare && (
+      {onShare && type !== 'multi' && (
         <button onClick={() => { onShare(); onClose(); }} style={menuItemStyle}>
           <Share2 size={16} color="#5F6368" />
           <span>Share</span>
         </button>
       )}
 
-      {onRename && (
+      {onRename && type !== 'multi' && (
         <button onClick={() => { onRename(); onClose(); }} style={menuItemStyle}>
           <Edit2 size={16} color="#5F6368" />
           <span>Rename</span>
         </button>
       )}
 
-      {onMove && (
+      {onMove && type !== 'multi' && (
         <button onClick={() => { onMove(); onClose(); }} style={menuItemStyle}>
           <FolderInput size={16} color="#5F6368" />
           <span>Move to...</span>
         </button>
       )}
 
-      {onDelete && (
+      {onDelete && type !== 'multi' && (
         <>
           <div style={{ height: '1px', background: '#E0E3E7', margin: '4px 0' }} />
           <button onClick={() => { onDelete(); onClose(); }} style={{ ...menuItemStyle, color: '#C5221F' }}>

@@ -1,6 +1,8 @@
 import { betterAuth } from 'better-auth';
-import { twoFactor } from 'better-auth/plugins';
+import { twoFactor, admin } from 'better-auth/plugins';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { pool } from './db.js';
 
 dotenv.config();
@@ -28,7 +30,32 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
-    minPasswordLength: 8,
+    minPasswordLength: 5,
+    sendResetPassword: async (data) => {
+      console.log(`[SIMULATED EMAIL] Password reset requested for ${data.user.email}. Link: ${data.url}`);
+      try {
+        const filePath = path.join(process.cwd(), 'data', 'storage', 'password_resets.json');
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        
+        let resets = [];
+        if (fs.existsSync(filePath)) {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          resets = JSON.parse(content || '[]');
+        }
+        
+        resets.push({
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          url: data.url,
+          timestamp: new Date().toISOString(),
+        });
+        
+        fs.writeFileSync(filePath, JSON.stringify(resets, null, 2));
+      } catch (err) {
+        console.error('[SIMULATED EMAIL] Failed to save password reset to file:', err);
+      }
+    }
   },
   user: {
     additionalFields: {
@@ -47,6 +74,14 @@ export const auth = betterAuth({
         defaultValue: 0,
         required: false,
       },
+      phoneNumber: {
+        type: 'string',
+        required: false,
+      },
+      birthdate: {
+        type: 'string',
+        required: false,
+      },
     },
   },
   plugins: [
@@ -57,6 +92,7 @@ export const auth = betterAuth({
         period: 30,
       },
     }),
+    admin(),
   ],
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
@@ -92,19 +128,16 @@ export const auth = betterAuth({
           }
           return { data: user };
         },
-        after: async (user) => {
-          // Mark most recent matching active invite code as used
+        after: async (user: any, ctx: any) => {
+          // Mark the exact submitted invite code as used
           try {
-            const inviteRes = await pool.query(
-              `SELECT id FROM "invite_codes"
-               WHERE "used_at" IS NULL AND "expires_at" > CURRENT_TIMESTAMP
-               ORDER BY "created_at" DESC LIMIT 1`
-            );
-            if (inviteRes.rowCount && inviteRes.rowCount > 0) {
-              const invite = inviteRes.rows[0];
+            const submittedCode = ctx?.body?.inviteCode ? String(ctx.body.inviteCode).trim() : null;
+            if (submittedCode) {
               await pool.query(
-                `UPDATE "invite_codes" SET "used_by" = $1, "used_at" = CURRENT_TIMESTAMP WHERE id = $2`,
-                [user.id, invite.id]
+                `UPDATE "invite_codes" 
+                 SET "used_by" = $1, "used_at" = CURRENT_TIMESTAMP 
+                 WHERE "code" = $2 AND "used_at" IS NULL`,
+                [user.id, submittedCode]
               );
             }
           } catch (e) {

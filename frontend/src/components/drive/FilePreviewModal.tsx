@@ -56,7 +56,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const isPdf = file.mimeType === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   const isDocx = /\.(docx|dotx|docm)$/i.test(file.name) || file.mimeType.includes('wordprocessingml');
   const isTextOrCode = !isDocx && (file.mimeType.startsWith('text/') || /\.(txt|json|js|ts|tsx|jsx|html|css|md|py|go|rs|c|cpp|java|sh|yml|yaml|sql|xml|env|log|csv)$/i.test(file.name));
-  const isEditable = isDocx || isTextOrCode;
+  const isEditable = isTextOrCode;
 
   useEffect(() => {
     if (isDocx) {
@@ -89,22 +89,16 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   }, [file.id, isDocx, isTextOrCode, previewUrl]);
 
   const handleSave = async () => {
+    if (!isEditable) return;
     setIsSaving(true);
     setSaveSuccess(false);
     setError(null);
-
-    let updatedContent = '';
-    if (isDocx) {
-      updatedContent = editorRef.current ? editorRef.current.innerText : docxHtml;
-    } else {
-      updatedContent = textContent;
-    }
 
     try {
       const res = await fetch(`/api/files/${file.id}/content`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: updatedContent }),
+        body: JSON.stringify({ content: textContent }),
         credentials: 'include',
       });
 

@@ -7,6 +7,7 @@ import { RegisterForm } from './components/auth/RegisterForm';
 import { ForgotPasswordModal } from './components/auth/ForgotPasswordModal';
 import { TwoFactorSetupModal } from './components/auth/TwoFactorSetupModal';
 import { AdminQuotaModal } from './components/auth/AdminQuotaModal';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { Header, FileTypeFilter, ModifiedFilter } from './components/layout/Header';
 import { Sidebar, SidebarTab } from './components/layout/Sidebar';
 import { ActivityPanel } from './components/layout/ActivityPanel';
@@ -24,7 +25,9 @@ import { NewFolderModal } from './components/drive/Modals';
 
 function MainContent() {
   const { loading: authLoading, isAuthenticated, show2FASetup, setShow2FASetup, showAdminModal, setShowAdminModal } = useAuth();
-  const [authView, setAuthView] = useState<'login' | 'register'>('login');
+  const [authView, setAuthView] = useState<'login' | 'register'>(
+    window.location.pathname === '/register' ? 'register' : 'login'
+  );
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
 
@@ -42,6 +45,13 @@ function MainContent() {
     return <PublicSharePage token={publicShareMatch[1]} />;
   }
 
+  // 1.5 Check for Password Reset Link /reset-password
+  if (window.location.pathname === '/reset-password') {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token') || '';
+    return <ResetPasswordPage token={token} />;
+  }
+
   if (authLoading) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', color: '#5F6368', gap: '12px', background: '#F8FAFD' }}>
@@ -57,8 +67,8 @@ function MainContent() {
       <div style={{ minHeight: '100vh', background: '#F8FAFD', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
         {authView === 'login' ? (
           <LoginForm
-            onSwitchToRegister={() => setAuthView('register')}
             onForgotPassword={() => setShowForgotModal(true)}
+            onSwitchToRegister={() => setAuthView('register')}
           />
         ) : (
           <RegisterForm
@@ -80,12 +90,6 @@ function MainContent() {
       <Header
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        selectedTypeFilter={selectedTypeFilter}
-        onTypeFilterChange={setSelectedTypeFilter}
-        selectedModifiedFilter={selectedModifiedFilter}
-        onModifiedFilterChange={setSelectedModifiedFilter}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
         showActivityPanel={showActivityPanel}
         onToggleActivityPanel={() => setShowActivityPanel(!showActivityPanel)}
         onOpenAdminModal={() => setShowAdminModal(true)}
@@ -108,8 +112,11 @@ function MainContent() {
             <MyDrive
               searchQuery={searchQuery}
               typeFilter={selectedTypeFilter}
+              onTypeFilterChange={setSelectedTypeFilter}
               modifiedFilter={selectedModifiedFilter}
+              onModifiedFilterChange={setSelectedModifiedFilter}
               viewMode={viewMode}
+              onViewModeChange={setViewMode}
             />
           )}
 
@@ -117,8 +124,12 @@ function MainContent() {
             <StarredScreen
               searchQuery={searchQuery}
               typeFilter={selectedTypeFilter}
+              onTypeFilterChange={setSelectedTypeFilter}
               modifiedFilter={selectedModifiedFilter}
+              onModifiedFilterChange={setSelectedModifiedFilter}
               viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              onNavigateFolder={() => setActiveTab('drive')}
             />
           )}
 

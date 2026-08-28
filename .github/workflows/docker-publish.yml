@@ -8,6 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  OWNER_LC: ''
 
 jobs:
   build-and-push:

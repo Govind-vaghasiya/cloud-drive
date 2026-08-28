@@ -1,21 +1,34 @@
-import React, { useState } from 'react';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { authClient } from '../../lib/auth-client';
 import { useAuth } from '../../context/AuthContext';
 
 interface LoginFormProps {
-  onSwitchToRegister?: () => void;
   onForgotPassword: () => void;
+  onSwitchToRegister?: () => void;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForgotPassword }) => {
+export const LoginForm: React.FC<LoginFormProps> = ({ onForgotPassword, onSwitchToRegister }) => {
   const { refreshUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [requires2FA, setRequires2FA] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFreshInstall, setIsFreshInstall] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/is-fresh-install')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.fresh) {
+          setIsFreshInstall(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +47,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForg
       } else {
         const res = await authClient.signIn.email({ email, password });
         if (res.error) {
+          if (res.error.code === 'TWO_FACTOR_REQUIRED' || res.error.message === 'TWO_FACTOR_REQUIRED') {
+            setRequires2FA(true);
+            setLoading(false);
+            return;
+          }
           setError(res.error.message || 'Invalid email or password');
           setLoading(false);
           return;
@@ -59,7 +77,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForg
           background: '#FFFFFF',
           borderRadius: '24px',
           padding: '40px',
-          border: '1px solid #E0E3E7',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.06)',
           display: 'flex',
           flexDirection: 'column',
@@ -81,6 +98,30 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForg
         <p style={{ fontSize: '0.9rem', color: '#5F6368', margin: '0 0 24px 0' }}>
           to continue to Cloud Drive
         </p>
+
+        {isFreshInstall && (
+          <div
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              background: '#E8F0FE',
+              border: '1px solid #C2E7FF',
+              color: '#0B57D0',
+              fontSize: '0.86rem',
+              fontWeight: 500,
+              lineHeight: 1.4,
+              marginBottom: '16px',
+              textAlign: 'left',
+            }}
+          >
+            <strong>First time setup:</strong> Log in with the default admin credentials:
+            <div style={{ marginTop: '4px', fontFamily: 'monospace', fontSize: '0.82rem', background: 'rgba(255, 255, 255, 0.6)', padding: '6px 8px', borderRadius: '6px' }}>
+              Email: govind@admin.com<br/>
+              Password: admin
+            </div>
+          </div>
+        )}
 
         {error && (
           <div
@@ -120,15 +161,40 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForg
               </div>
 
               <div>
-
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  style={authInputStyle}
-                />
+                <label style={{ fontSize: '0.8rem', fontWeight: 500, color: '#5F6368', display: 'block', marginBottom: '4px' }}>
+                  Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    style={{ ...authInputStyle, paddingRight: '42px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#80868B',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: 0,
+                    }}
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
             </>
           ) : (
@@ -169,25 +235,21 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onForg
         </form>
 
         {onSwitchToRegister && (
-          <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '0.85rem', color: '#5F6368' }}>
-            Don't have an account?{' '}
+          <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #E0E3E7', width: '100%', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.86rem', color: '#5F6368', marginRight: '6px' }}>
+              Have an invite code?
+            </span>
             <button
               type="button"
               onClick={onSwitchToRegister}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#0B57D0',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                padding: 0,
-              }}
+              style={{ background: 'none', border: 'none', color: '#0B57D0', fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}
             >
               Create account
             </button>
           </div>
         )}
+
+
       </div>
     </div>
   );
